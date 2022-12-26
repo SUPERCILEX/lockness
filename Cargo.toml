@@ -1,0 +1,11 @@
+[package]
+name = "lockness"
+version = "0.0.0"
+authors = ["Alex Saveau <saveau.alexandre@gmail.com>"]
+edition = "2021"
+rust-version = "1.66"
+description = "TODO"
+repository = "https://github.com/SUPERCILEX/lockness"
+keywords = ["lockless", "lock-free", "queue", "mpmc", "atomics"]
+categories = ["concurrency", "asynchronous", "data-structures"]
+license = "Apache-2.0"
