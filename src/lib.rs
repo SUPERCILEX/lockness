@@ -36,4 +36,9 @@ impl<T> RawOneLatest<T> {
             data = self.condvar.wait(data).unwrap();
         }
     }
+
+    pub fn try_pop(&self) -> Option<T> {
+        let mut data = self.data.lock().unwrap();
+        std::mem::replace(&mut *data, None)
+    }
 }
