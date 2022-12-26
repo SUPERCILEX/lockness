@@ -1,6 +1,6 @@
 [package]
 name = "lockness"
-version = "0.0.0"
+version = "0.0.1"
 authors = ["Alex Saveau <saveau.alexandre@gmail.com>"]
 edition = "2021"
 rust-version = "1.66"
