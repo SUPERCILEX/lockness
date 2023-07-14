@@ -1,11 +1,14 @@
 [package]
-name = "lockness"
-version = "0.0.2"
+name = "lockness-scheduler"
+version = "0.0.1"
 authors = ["Alex Saveau <saveau.alexandre@gmail.com>"]
 edition = "2021"
-rust-version = "1.66"
+rust-version = "1.70"
 description = "TODO"
 repository = "https://github.com/SUPERCILEX/lockness"
-keywords = ["lockless", "lock-free", "queue", "mpmc", "atomics"]
+keywords = ["scheduler", "blocking", "thread", "parallel", "performance"]
 categories = ["concurrency", "asynchronous", "data-structures"]
 license = "Apache-2.0"
+
+[dev-dependencies]
+supercilex-tests = "0.3.3"
