@@ -1,8 +1,7 @@
-#![feature(new_uninit)]
-#![feature(local_key_cell_methods)]
-#![feature(inline_const)]
-#![feature(generic_arg_infer)]
-#![feature(get_mut_unchecked)]
+#![feature(vec_into_raw_parts)]
+#![feature(ptr_from_ref)]
+#![feature(pointer_is_aligned)]
+#![feature(int_roundings)]
 
 use std::{
     marker::PhantomData,
@@ -13,7 +12,6 @@ use std::{
 
 use crate::runtime::RuntimeContext;
 
-mod bag;
 mod cache_line_size;
 mod runtime;
 mod tasks;
