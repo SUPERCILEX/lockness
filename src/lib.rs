@@ -2,6 +2,8 @@
 #![feature(ptr_from_ref)]
 #![feature(pointer_is_aligned)]
 #![feature(int_roundings)]
+#![feature(allocator_api)]
+#![feature(cell_update)]
 
 use std::{
     marker::PhantomData,
@@ -13,6 +15,7 @@ use std::{
 use crate::runtime::RuntimeContext;
 
 mod cache_line_size;
+mod core;
 mod runtime;
 mod tasks;
 
