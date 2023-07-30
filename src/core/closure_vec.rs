@@ -70,9 +70,6 @@ impl<F: FnOnce() + 'static> ClosureVec<F> {
 
     pub fn clear(&mut self) {
         while !self._pop_and_run(true) {}
-
-        let Self { data, _type } = self;
-        data.clear();
     }
 
     pub fn into_raw(self) -> *mut Self {
@@ -134,14 +131,19 @@ impl<F: FnOnce() + 'static> ClosureVec<F> {
     }
 
     fn maybe_init(&mut self) {
-        let Self { data, _type } = self;
-
-        if !data.is_empty() {
+        if !self.is_empty() {
             return;
         }
 
-        if !data.as_ptr().cast::<FirstEntry<F>>().is_aligned() {
+        let Self { data, _type } = self;
+
+        if !data.as_ptr().cast::<FirstEntry<F>>().is_aligned()
+            || (!data.is_empty()
+                && <&Header>::from(data.as_slice()).vec_align != align_of::<FirstEntry<F>>())
+        {
             *data = Self::typed_vec_to_bytes(Vec::new());
+        } else {
+            data.clear();
         }
 
         {
@@ -218,38 +220,36 @@ impl<F: FnOnce() + 'static> ClosureVec<F> {
     }
 
     fn _pop_and_run(&mut self, just_drop: bool) -> bool {
-        let is_empty = self.is_empty();
-        let Self { data, _type } = self;
-
-        if is_empty {
-            true
-        } else {
-            let &mut Header {
-                task_fn,
-                task_size,
-                vec_align: _,
-                ref mut vec_len,
-                vec_capacity: _,
-            } = <&mut Header>::from(data.as_mut_slice());
-            let task = unsafe { transmute::<_, unsafe fn(NonNull<()>, bool)>(task_fn) };
-            *vec_len -= max(1, task_size);
-
-            if task_size > 0 {
-                let start = *vec_len;
-                let captures = NonNull::from(&mut data[start..]).cast();
-
-                unsafe {
-                    data.set_len(start);
-                    task(captures, just_drop);
-                }
-            } else {
-                unsafe {
-                    task(NonNull::dangling(), just_drop);
-                }
-            };
-
-            false
+        if self.is_empty() {
+            return true;
         }
+
+        let Self { data, _type } = self;
+        let &mut Header {
+            task_fn,
+            task_size,
+            vec_align: _,
+            ref mut vec_len,
+            vec_capacity: _,
+        } = <&mut Header>::from(data.as_mut_slice());
+        let task = unsafe { transmute::<_, unsafe fn(NonNull<()>, bool)>(task_fn) };
+        *vec_len -= max(1, task_size);
+
+        if task_size > 0 {
+            let start = *vec_len;
+            let captures = NonNull::from(&mut data[start..]).cast();
+
+            unsafe {
+                data.set_len(start);
+                task(captures, just_drop);
+            }
+        } else {
+            unsafe {
+                task(NonNull::dangling(), just_drop);
+            }
+        };
+
+        false
     }
 
     pub fn is_empty(&self) -> bool {
@@ -379,12 +379,45 @@ mod tests {
         assert_eq!(666, count.get());
     }
 
+    fn validate_clear_add_cycle<F: FnOnce() + 'static>(mut f: impl FnMut(usize) -> F) {
+        let mut tasks = ClosureVec::new();
+
+        let count = Rc::new(Cell::new(0));
+
+        for i in 0..3 {
+            tasks.clear();
+            let f = f(i);
+            let count = count.clone();
+            tasks.push(move || {
+                f();
+                count.update(|i| i + 1);
+            });
+        }
+        while !tasks.pop_and_run() {}
+        tasks.clear();
+
+        assert_eq!(1, count.get());
+    }
+
+    fn validate_raw<F: FnOnce() + 'static>(mut f: impl FnMut(usize) -> F) {
+        let mut tasks = ClosureVec::new();
+        tasks.push(f(2048));
+
+        let mut tasks = unsafe { ClosureVec::from_raw(tasks.into_raw()) };
+        tasks.push(f(1234));
+
+        let mut tasks = unsafe { ClosureVec::<fn()>::from_raw(tasks.into_raw().cast()) };
+        while !(tasks.pop_and_run()) {}
+    }
+
     fn validate_all<F: FnOnce() + 'static>(c: impl FnMut(usize) -> F + Clone + 'static) {
         validate_correctness(c.clone());
         validate_empty(c.clone());
+        validate_clear_add_cycle(c.clone());
         validate_do_nothing(c.clone());
         validate_drop_without_running(c.clone());
-        validate_type_erased_ops(c);
+        validate_type_erased_ops(c.clone());
+        validate_raw(c);
     }
 
     #[test]
