@@ -344,6 +344,7 @@ mod tests {
         assert!(tasks.is_empty());
     }
 
+    //noinspection RsConstantConditionIf
     fn validate_do_nothing<F: FnOnce() + 'static>(mut f: impl FnMut(usize) -> F) {
         let mut tasks = ClosureVec::new();
         if false {
@@ -360,11 +361,30 @@ mod tests {
         });
     }
 
+    fn validate_type_erased_ops<F: FnOnce() + 'static>(mut f: impl FnMut(usize) -> F) {
+        let mut tasks = ClosureVec::new();
+        let count = Rc::new(Cell::new(0));
+
+        tasks.push({
+            let f = f(88);
+            let count = count.clone();
+            move || {
+                f();
+                count.set(666);
+            }
+        });
+
+        let mut tasks = unsafe { transmute::<_, ClosureVec<fn()>>(tasks) };
+        assert!(!tasks.pop_and_run());
+        assert_eq!(666, count.get());
+    }
+
     fn validate_all<F: FnOnce() + 'static>(c: impl FnMut(usize) -> F + Clone + 'static) {
         validate_correctness(c.clone());
         validate_empty(c.clone());
         validate_do_nothing(c.clone());
-        validate_drop_without_running(c);
+        validate_drop_without_running(c.clone());
+        validate_type_erased_ops(c);
     }
 
     #[test]
