@@ -46,6 +46,8 @@ impl Header {
 
 impl<'a> From<&'a mut [MaybeUninit<u8>]> for &'a mut Header {
     fn from(value: &mut [MaybeUninit<u8>]) -> Self {
+        debug_assert!(value.len() >= size_of::<Header>());
+
         #[allow(clippy::cast_ptr_alignment)]
         let header = ptr::from_mut(value).cast::<Header>();
         unsafe { &mut *header }
@@ -54,6 +56,8 @@ impl<'a> From<&'a mut [MaybeUninit<u8>]> for &'a mut Header {
 
 impl<'a> From<&'a [MaybeUninit<u8>]> for &'a Header {
     fn from(value: &[MaybeUninit<u8>]) -> Self {
+        debug_assert!(value.len() >= size_of::<Header>());
+
         #[allow(clippy::cast_ptr_alignment)]
         let header = ptr::from_ref(value).cast::<Header>();
         unsafe { &*header }
@@ -134,15 +138,15 @@ impl<F: FnOnce() + 'static> ClosureVec<F> {
         if !self.is_empty() {
             return;
         }
-
         let Self { data, _type } = self;
 
-        if !data.as_ptr().cast::<FirstEntry<F>>().is_aligned()
-            || (!data.is_empty()
-                && <&Header>::from(data.as_slice()).vec_align != align_of::<FirstEntry<F>>())
-        {
+        if !data.as_ptr().cast::<FirstEntry<F>>().is_aligned() {
             *data = Self::typed_vec_to_bytes(Vec::new());
         } else {
+            debug_assert!(
+                data.is_empty()
+                    || <&Header>::from(data.as_slice()).vec_align == align_of::<FirstEntry<F>>()
+            );
             data.clear();
         }
 
