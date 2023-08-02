@@ -487,4 +487,26 @@ mod tests {
         });
         tasks.pop_and_run();
     }
+
+    #[test]
+    fn validate_reuse_with_different_type() {
+        let mut tasks = ClosureVec::new();
+
+        fn use_<F: FnOnce() + Clone + 'static>(tasks: &mut ClosureVec<fn()>, f: F) {
+            let tasks: &mut ClosureVec<F> = unsafe { transmute(tasks) };
+            tasks.push(f.clone());
+            assert!(!tasks.pop_and_run());
+
+            tasks.push(f);
+            tasks.clear();
+        }
+
+        use_(&mut tasks, || {
+            dbg!(42);
+        });
+        let v = vec!["a", "b", "c"];
+        use_(&mut tasks, move || {
+            dbg!(v);
+        })
+    }
 }
