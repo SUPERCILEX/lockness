@@ -241,7 +241,11 @@ impl<F: FnOnce() + 'static> ClosureVec<F> {
 
         if task_size > 0 {
             let start = *vec_len;
-            let captures = NonNull::from(&mut data[start..]).cast();
+            let captures = if cfg!(debug_assertions) {
+                NonNull::from(&mut data[start..]).cast()
+            } else {
+                unsafe { NonNull::new_unchecked(data.as_mut_ptr().add(start)) }.cast()
+            };
 
             unsafe {
                 data.set_len(start);
