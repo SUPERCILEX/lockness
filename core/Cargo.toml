@@ -1,0 +1,14 @@
+[package]
+name = "lockness-core"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "TODO"
+repository.workspace = true
+keywords = ["mpmc", "mpsc", "lock-free", "parallel", "performance"]
+categories = ["concurrency", "asynchronous", "data-structures"]
+license.workspace = true
+
+[dev-dependencies]
+criterion = "0.5.1"
+crossbeam-queue = "0.3.8"

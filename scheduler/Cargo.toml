@@ -1,0 +1,16 @@
+[package]
+name = "lockness-scheduler"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+description = "TODO"
+repository.workspace = true
+keywords = ["scheduler", "blocking", "thread", "parallel", "performance"]
+categories = ["concurrency", "asynchronous", "data-structures"]
+license.workspace = true
+
+[dev-dependencies]
+criterion = "0.5.1"
+flume = "0.10.14"
+rayon = "1.7.0"
+tokio = "1.30.0"

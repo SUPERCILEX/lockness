@@ -1,14 +1,31 @@
-[package]
-name = "lockness-scheduler"
+[workspace]
+members = [
+    "core",
+    "scheduler",
+]
+
+[workspace.package]
 version = "0.0.1"
 authors = ["Alex Saveau <saveau.alexandre@gmail.com>"]
 edition = "2021"
-rust-version = "1.70"
-description = "TODO"
 repository = "https://github.com/SUPERCILEX/lockness"
-keywords = ["scheduler", "blocking", "thread", "parallel", "performance"]
-categories = ["concurrency", "asynchronous", "data-structures"]
 license = "Apache-2.0"
+
+[package]
+name = "lint"
+version = "0.0.0"
+publish = false
 
 [dev-dependencies]
 supercilex-tests = "0.3.3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.dr]
+inherits = "release"
+debug = true
+strip = false

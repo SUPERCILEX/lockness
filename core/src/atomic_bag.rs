@@ -114,21 +114,21 @@ impl<const N: usize, T: Allocated, I: ReceiverImpl<T>> Receiver<N, T, I> {
     }
 }
 
-trait ReceiverImpl<T> {
+pub trait ReceiverImpl<T> {
     fn retrieve_ptr(&self, mask: usize, status: &AtomicUsize, ptr: &AtomicPtr<T>) -> *mut T;
 }
 
 mod receiver_impls {
     use std::sync::atomic::{AtomicPtr, AtomicUsize};
 
-    use crate::core::atomic_bag::ReceiverImpl;
+    use super::ReceiverImpl;
 
     pub struct SingleReceiverImpl<const N: usize, T> {
         prev_ptrs: [*mut T; N],
     }
 
     impl<const N: usize, T> ReceiverImpl<T> for SingleReceiverImpl<N, T> {
-        fn retrieve_ptr(&self, mask: usize, status: &AtomicUsize, ptr: &AtomicPtr<T>) {
+        fn retrieve_ptr(&self, mask: usize, status: &AtomicUsize, ptr: &AtomicPtr<T>) -> *mut T {
             todo!()
         }
     }
@@ -136,7 +136,7 @@ mod receiver_impls {
     pub struct MultipleReceiverImpl;
 
     impl<T> ReceiverImpl<T> for MultipleReceiverImpl {
-        fn retrieve_ptr(&self, mask: usize, status: &AtomicUsize, ptr: &AtomicPtr<T>) {
+        fn retrieve_ptr(&self, mask: usize, status: &AtomicUsize, ptr: &AtomicPtr<T>) -> *mut T {
             todo!()
         }
     }
