@@ -65,6 +65,7 @@ impl<'a> From<&'a [MaybeUninit<u8>]> for &'a Header {
 }
 
 impl<F: FnOnce() + 'static> ClosureVec<F> {
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             data: Vec::new(),
@@ -76,6 +77,7 @@ impl<F: FnOnce() + 'static> ClosureVec<F> {
         while !self._pop_and_run(true) {}
     }
 
+    #[must_use]
     pub fn into_raw(self) -> *mut Self {
         let mut this = ManuallyDrop::new(self);
         let data = {
@@ -140,14 +142,14 @@ impl<F: FnOnce() + 'static> ClosureVec<F> {
         }
         let Self { data, _type } = self;
 
-        if !data.as_ptr().cast::<FirstEntry<F>>().is_aligned() {
-            *data = Self::typed_vec_to_bytes(Vec::new());
-        } else {
+        if data.as_ptr().cast::<FirstEntry<F>>().is_aligned() {
             debug_assert!(
                 data.is_empty()
                     || <&Header>::from(data.as_slice()).vec_align == align_of::<FirstEntry<F>>()
             );
             data.clear();
+        } else {
+            *data = Self::typed_vec_to_bytes(Vec::new());
         }
 
         {
@@ -260,6 +262,7 @@ impl<F: FnOnce() + 'static> ClosureVec<F> {
         false
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         let &Header {
             task_fn: _,
@@ -282,17 +285,6 @@ impl<F: FnOnce() + 'static> ClosureVec<F> {
 
 impl<F: FnOnce()> Drop for ClosureVec<F> {
     fn drop(&mut self) {
-        if self.data.is_empty() {
-            return;
-        }
-        let &Header {
-            task_fn: _,
-            task_size: _,
-            vec_align,
-            vec_len: _,
-            vec_capacity: _,
-        } = <&Header>::from(self.data.as_slice());
-
         struct PanicGuard<'a, F: FnOnce() + 'static>(&'a mut ClosureVec<F>, usize);
 
         impl<'a, F: FnOnce() + 'static> Drop for PanicGuard<'a, F> {
@@ -307,6 +299,17 @@ impl<F: FnOnce()> Drop for ClosureVec<F> {
                 }
             }
         }
+
+        if self.data.is_empty() {
+            return;
+        }
+        let &Header {
+            task_fn: _,
+            task_size: _,
+            vec_align,
+            vec_len: _,
+            vec_capacity: _,
+        } = <&Header>::from(self.data.as_slice());
 
         PanicGuard(self, vec_align).0.clear();
     }
@@ -494,10 +497,8 @@ mod tests {
 
     #[test]
     fn validate_reuse_with_different_type() {
-        let mut tasks = ClosureVec::new();
-
         fn use_<F: FnOnce() + Clone + 'static>(tasks: &mut ClosureVec<fn()>, f: F) {
-            let tasks: &mut ClosureVec<F> = unsafe { transmute(tasks) };
+            let tasks = unsafe { &mut *ptr::from_mut(tasks).cast::<ClosureVec<F>>() };
             tasks.push(f.clone());
             assert!(!tasks.pop_and_run());
 
@@ -505,12 +506,13 @@ mod tests {
             tasks.clear();
         }
 
+        let mut tasks = ClosureVec::new();
         use_(&mut tasks, || {
             dbg!(42);
         });
         let v = vec!["a", "b", "c"];
         use_(&mut tasks, move || {
             dbg!(v);
-        })
+        });
     }
 }

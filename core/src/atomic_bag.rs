@@ -11,7 +11,7 @@ use std::{
 };
 
 use receiver_impls::{MultipleReceiverImpl, SingleReceiverImpl};
-use status::{Block, StatusView, SLEEP_MASK};
+use status::{Block, SLEEP_MASK};
 
 pub trait Allocated {
     fn into_ptr(self) -> *mut ();
@@ -21,6 +21,7 @@ pub trait Allocated {
 
 pub type SingleReceiver<const N: usize, T> = Receiver<N, T, SingleReceiverImpl<N, T>>;
 
+#[must_use]
 pub fn mpsc<const N: usize, T: Allocated + Send + 'static>()
 -> (Sender<N, T, false>, SingleReceiver<N, T>) {
     todo!()
@@ -28,6 +29,7 @@ pub fn mpsc<const N: usize, T: Allocated + Send + 'static>()
 
 pub type MultipleReceiver<const N: usize, T> = Receiver<N, T, MultipleReceiverImpl>;
 
+#[must_use]
 pub fn mpmc<const N: usize, T: Allocated + Send + 'static>()
 -> (Sender<N, T, true>, MultipleReceiver<N, T>) {
     todo!()
@@ -54,7 +56,7 @@ impl<const N: usize, T: Allocated, const IS_MULTIPLE_RECEIVER: bool>
 
     pub fn add(&self, value: T) -> Option<T> {
         let Inner { status, bag } = &*self.inner;
-        let status_view = StatusView::new(status.load(Relaxed));
+        let status_view = status::View::new(status.load(Relaxed));
 
         let Some(Block { index, mask }) = status_view.first_available_block() else {
             return Some(value);
@@ -101,7 +103,7 @@ impl<const N: usize, T: Allocated, I: ReceiverImpl<T>> Receiver<N, T, I> {
     pub fn items(&'_ self, timeout: Duration) -> impl Iterator<Item = T> + '_ {
         let Self { inner, internal } = self;
         let Inner { status, bag } = &**inner;
-        let status_view = StatusView::new(status.load(Relaxed));
+        let status_view = status::View::new(status.load(Relaxed));
 
         if !timeout.is_zero() && status_view.is_empty() {
             todo!("wait");
@@ -152,20 +154,20 @@ mod status {
     /// \[ occupied ]\[ sleep ] \
     /// --- 63 bits --- 1 bit
     #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-    pub struct StatusView(usize);
+    pub struct View(usize);
 
     pub const SLEEP_MASK: usize = 1;
 
-    impl StatusView {
-        pub fn new(status: usize) -> Self {
+    impl View {
+        pub const fn new(status: usize) -> Self {
             Self(status)
         }
 
-        pub fn is_sleeping(self) -> bool {
+        pub const fn is_sleeping(self) -> bool {
             (self.0 & SLEEP_MASK) == SLEEP_MASK
         }
 
-        pub fn is_empty(self) -> bool {
+        pub const fn is_empty(self) -> bool {
             (self.0 & !SLEEP_MASK).count_ones() == 0
         }
 
@@ -182,7 +184,7 @@ mod status {
         }
     }
 
-    impl IntoIterator for StatusView {
+    impl IntoIterator for View {
         type Item = Block;
         type IntoIter = BlockIter;
 
@@ -217,25 +219,19 @@ mod status {
 
         #[test]
         fn sanity() {
-            assert_eq!(StatusView(usize::MAX).first_available_block(), None);
-            assert_eq!(StatusView(usize::MAX << 1).first_available_block(), None);
+            assert_eq!(View(usize::MAX).first_available_block(), None);
+            assert_eq!(View(usize::MAX << 1).first_available_block(), None);
             assert_eq!(
-                StatusView(usize::MAX << 2)
+                View(usize::MAX << 2)
                     .first_available_block()
                     .map(|b| b.index),
                 Some(62)
             );
 
+            assert_eq!(View(0).first_available_block().map(|b| b.index), Some(0));
+            assert_eq!(View(1).first_available_block().map(|b| b.index), Some(0));
             assert_eq!(
-                StatusView(0).first_available_block().map(|b| b.index),
-                Some(0)
-            );
-            assert_eq!(
-                StatusView(1).first_available_block().map(|b| b.index),
-                Some(0)
-            );
-            assert_eq!(
-                StatusView(1 << (usize::BITS - 1))
+                View(1 << (usize::BITS - 1))
                     .first_available_block()
                     .map(|b| b.index),
                 Some(1)
