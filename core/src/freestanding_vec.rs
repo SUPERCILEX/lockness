@@ -215,10 +215,7 @@ impl<M, T> FreestandingVec<M, T> {
         self.maybe_init(init);
         let new_cap = self.reserve(1);
 
-        unsafe {
-            self.data.add(1).cast::<T>().add(self.len()).write(value);
-        }
-
+        let ptr = self.data;
         let Header {
             metadata: _,
             value_size: _,
@@ -226,6 +223,10 @@ impl<M, T> FreestandingVec<M, T> {
             len,
             capacity,
         } = unsafe { Header::from_mut(self) };
+        unsafe {
+            ptr.add(1).cast::<T>().add(*len).write(value);
+        }
+
         *len += 1;
         *capacity = new_cap;
     }
