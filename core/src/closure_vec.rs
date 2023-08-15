@@ -1,75 +1,24 @@
 use std::{
-    alloc::{Allocator, Layout},
-    cmp::max,
-    marker::PhantomData,
-    mem,
-    mem::{align_of, size_of, transmute, ManuallyDrop, MaybeUninit},
+    mem::{transmute, ManuallyDrop},
     ptr,
     ptr::NonNull,
 };
 
-pub struct ClosureVec<F: FnOnce() + 'static> {
-    data: Vec<MaybeUninit<u8>>,
-    _type: PhantomData<F>,
-}
+use crate::freestanding_vec::FreestandingVec;
 
-#[derive(Copy, Clone)]
-struct Header {
+struct Metadata {
     task_fn: NonNull<()>,
-    task_size: usize,
-    vec_align: usize,
-    vec_len: usize,
-    vec_capacity: usize,
 }
 
-union FirstEntry<T> {
-    header: Header,
-    _t: ManuallyDrop<T>, // Used to ensure proper alignment
-}
-
-impl Header {
-    fn update(from: &mut Vec<MaybeUninit<u8>>) {
-        let len = from.len();
-        let capacity = from.capacity();
-
-        let Self {
-            task_fn: _,
-            task_size: _,
-            vec_align: _,
-            vec_len,
-            vec_capacity,
-        } = <&mut Self>::from(from.as_mut_slice());
-        *vec_len = len;
-        *vec_capacity = capacity;
-    }
-}
-
-impl<'a> From<&'a mut [MaybeUninit<u8>]> for &'a mut Header {
-    fn from(value: &mut [MaybeUninit<u8>]) -> Self {
-        debug_assert!(value.len() >= size_of::<Header>());
-
-        #[allow(clippy::cast_ptr_alignment)]
-        let header = ptr::from_mut(value).cast::<Header>();
-        unsafe { &mut *header }
-    }
-}
-
-impl<'a> From<&'a [MaybeUninit<u8>]> for &'a Header {
-    fn from(value: &[MaybeUninit<u8>]) -> Self {
-        debug_assert!(value.len() >= size_of::<Header>());
-
-        #[allow(clippy::cast_ptr_alignment)]
-        let header = ptr::from_ref(value).cast::<Header>();
-        unsafe { &*header }
-    }
+pub struct ClosureVec<F: FnOnce() + 'static> {
+    data: FreestandingVec<Metadata, F>,
 }
 
 impl<F: FnOnce() + 'static> ClosureVec<F> {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            data: Vec::new(),
-            _type: PhantomData,
+            data: FreestandingVec::new(),
         }
     }
 
@@ -79,145 +28,28 @@ impl<F: FnOnce() + 'static> ClosureVec<F> {
 
     #[must_use]
     pub fn into_raw(self) -> *mut Self {
-        let mut this = ManuallyDrop::new(self);
-        let data = {
-            let vec_ptr = ptr::from_mut(&mut this.data);
-            unsafe { vec_ptr.read() }
-        };
-        data.into_raw_parts().0.cast()
+        let mut me = ManuallyDrop::new(self);
+        let data = ptr::from_mut(&mut me.data);
+        unsafe { data.read() }.into_raw().cast()
     }
 
     pub unsafe fn from_raw(ptr: *mut Self) -> Self {
-        let &Header {
-            task_fn: _,
-            task_size: _,
-            vec_align: _,
-            vec_len,
-            vec_capacity,
-        } = unsafe { &*ptr.cast::<Header>() };
         Self {
-            data: unsafe {
-                Vec::from_raw_parts(ptr.cast::<MaybeUninit<u8>>(), vec_len, vec_capacity)
-            },
-            _type: PhantomData,
+            data: FreestandingVec::from_raw(ptr.cast()),
         }
-    }
-
-    unsafe fn aligned_vec_op(
-        data: &mut Vec<MaybeUninit<u8>>,
-        op: impl FnOnce(&mut Vec<FirstEntry<F>>),
-    ) {
-        let mut vec = Self::bytes_vec_to_typed(mem::take(data));
-        op(&mut vec);
-        *data = Self::typed_vec_to_bytes(vec);
-    }
-
-    fn bytes_vec_to_typed(vec: Vec<MaybeUninit<u8>>) -> Vec<FirstEntry<F>> {
-        let (ptr, len, cap) = vec.into_raw_parts();
-        let ptr = ptr.cast::<FirstEntry<F>>();
-        let header_len = size_of::<FirstEntry<F>>();
-        debug_assert!(ptr.is_aligned());
-        debug_assert!(cap % header_len == 0);
-        debug_assert!(len <= cap);
-
-        let len = len.div_ceil(header_len);
-        let cap = cap / header_len;
-
-        unsafe { Vec::from_raw_parts(ptr, len, cap) }
-    }
-
-    fn typed_vec_to_bytes(vec: Vec<FirstEntry<F>>) -> Vec<MaybeUninit<u8>> {
-        let (ptr, len, cap) = vec.into_raw_parts();
-        let ptr = ptr.cast::<MaybeUninit<u8>>();
-        let header_len = size_of::<FirstEntry<F>>();
-        let len = len * header_len;
-        let cap = cap * header_len;
-
-        unsafe { Vec::from_raw_parts(ptr, len, cap) }
-    }
-
-    fn maybe_init(&mut self) {
-        if !self.is_empty() {
-            return;
-        }
-        let Self { data, _type } = self;
-
-        if data.as_ptr().cast::<FirstEntry<F>>().is_aligned() {
-            debug_assert!(
-                data.is_empty()
-                    || <&Header>::from(data.as_slice()).vec_align == align_of::<FirstEntry<F>>()
-            );
-            data.clear();
-        } else {
-            *data = Self::typed_vec_to_bytes(Vec::new());
-        }
-
-        {
-            unsafe fn call<F: FnOnce()>(f: NonNull<()>, just_drop: bool) {
-                let f = unsafe { f.cast::<F>().as_ptr().read() };
-                if !just_drop {
-                    f();
-                }
-            }
-
-            let init = |v: &mut Vec<_>| {
-                if size_of::<F>() > 0 {
-                    v.reserve(2);
-                }
-                v.push(FirstEntry {
-                    header: Header {
-                        task_fn: NonNull::new(call::<F> as *mut ()).unwrap(),
-                        task_size: size_of::<F>(),
-                        vec_align: align_of::<FirstEntry<F>>(),
-                        vec_len: 0,
-                        vec_capacity: 0,
-                    },
-                });
-            };
-            unsafe {
-                Self::aligned_vec_op(data, init);
-            }
-        }
-
-        Header::update(data);
     }
 
     pub fn push(&mut self, value: F) {
-        self.maybe_init();
-        let Self { data, _type } = self;
-
-        if size_of::<F>() == 0 {
-            let Header {
-                task_fn: _,
-                task_size: _,
-                vec_align: _,
-                vec_len,
-                vec_capacity: _,
-            } = <&mut Header>::from(data.as_mut_slice());
-            *vec_len += 1;
-            return;
-        }
-
-        unsafe {
-            let len = data.len();
-            Self::aligned_vec_op(data, |v| v.reserve(1));
-            data.set_len(len);
-        }
-
-        {
-            let data_ptr = ptr::from_mut(data.spare_capacity_mut()).cast::<F>();
-            unsafe {
-                data_ptr.write(value);
-            }
-        }
-        {
-            let new_len = data.len() + size_of::<F>();
-            unsafe {
-                data.set_len(new_len);
+        unsafe fn call<F: FnOnce()>(f: NonNull<()>, just_drop: bool) {
+            let f = unsafe { f.cast::<F>().as_ptr().read() };
+            if !just_drop {
+                f();
             }
         }
 
-        Header::update(data);
+        self.data.push(value, || Metadata {
+            task_fn: NonNull::new(call::<F> as *mut ()).unwrap(),
+        });
     }
 
     /// Returns true if the vec is empty, false otherwise.
@@ -226,98 +58,31 @@ impl<F: FnOnce() + 'static> ClosureVec<F> {
     }
 
     fn _pop_and_run(&mut self, just_drop: bool) -> bool {
-        if self.is_empty() {
-            return true;
-        }
-
-        let Self { data, _type } = self;
-        let &mut Header {
-            task_fn,
-            task_size,
-            vec_align: _,
-            ref mut vec_len,
-            vec_capacity: _,
-        } = <&mut Header>::from(data.as_mut_slice());
-        let task = unsafe { transmute::<_, unsafe fn(NonNull<()>, bool)>(task_fn) };
-        *vec_len -= max(1, task_size);
-
-        if task_size > 0 {
-            let start = *vec_len;
-            let captures = if cfg!(debug_assertions) {
-                NonNull::from(&mut data[start..]).cast()
-            } else {
-                unsafe { NonNull::new_unchecked(data.as_mut_ptr().add(start)) }.cast()
-            };
-
-            unsafe {
-                data.set_len(start);
-                task(captures, just_drop);
-            }
-        } else {
-            unsafe {
-                task(NonNull::dangling(), just_drop);
-            }
-        };
-
-        false
+        self.data
+            .pop(|&mut Metadata { task_fn }, captures| {
+                let task = unsafe { transmute::<_, unsafe fn(NonNull<()>, bool)>(task_fn) };
+                unsafe {
+                    task(captures.cast(), just_drop);
+                }
+            })
+            .is_none()
     }
 
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        let &Header {
-            task_fn: _,
-            task_size,
-            vec_align: _,
-            vec_len,
-            vec_capacity: _,
-        } = {
-            let Self { data, _type } = self;
-            if data.is_empty() {
-                return true;
-            }
-
-            <&Header>::from(data.as_slice())
-        };
-
-        vec_len <= max(size_of::<FirstEntry<()>>(), task_size)
+        self.data.is_empty()
     }
 }
 
 impl<F: FnOnce()> Drop for ClosureVec<F> {
     fn drop(&mut self) {
-        struct PanicGuard<'a, F: FnOnce() + 'static>(&'a mut ClosureVec<F>, usize);
-
-        impl<'a, F: FnOnce() + 'static> Drop for PanicGuard<'a, F> {
-            fn drop(&mut self) {
-                let v = mem::take(&mut self.0.data);
-                let (ptr, _len, cap, alloc) = v.into_raw_parts_with_alloc();
-                unsafe {
-                    alloc.deallocate(
-                        NonNull::new(ptr).unwrap_unchecked().cast(),
-                        Layout::from_size_align_unchecked(cap, self.1),
-                    );
-                }
-            }
-        }
-
-        if self.data.is_empty() {
-            return;
-        }
-        let &Header {
-            task_fn: _,
-            task_size: _,
-            vec_align,
-            vec_len: _,
-            vec_capacity: _,
-        } = <&Header>::from(self.data.as_slice());
-
-        PanicGuard(self, vec_align).0.clear();
+        self.clear();
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::Cell, rc::Rc};
+    use std::{cell::Cell, ptr, rc::Rc};
 
     use super::*;
 

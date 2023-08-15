@@ -76,10 +76,6 @@ impl<M, T> FreestandingVec<M, T> {
         !self.data.is_null()
     }
 
-    fn as_mut_ptr(&mut self) -> *mut T {
-        unsafe { self.data.add(1) }.cast::<T>()
-    }
-
     #[must_use]
     pub fn into_raw(self) -> *mut () {
         let this = ManuallyDrop::new(self);
@@ -116,14 +112,14 @@ impl<M, T> FreestandingVec<M, T> {
             return 0;
         }
 
-        let Header {
+        let &Header {
             metadata: _,
             value_size,
             alignment: _,
             len: _,
             capacity,
         } = unsafe { Header::from_ref(self) };
-        size_of::<FirstEntry<M, T>>() + value_size * capacity
+        cmp::max(size_of::<FirstEntry<M, ()>>(), value_size) + value_size * capacity
     }
 
     fn reserve(&mut self, additional: usize) -> usize {
@@ -220,7 +216,7 @@ impl<M, T> FreestandingVec<M, T> {
         let new_cap = self.reserve(1);
 
         unsafe {
-            self.as_mut_ptr().add(self.len()).write(value);
+            self.data.add(1).cast::<T>().add(self.len()).write(value);
         }
 
         let Header {
@@ -241,7 +237,7 @@ impl<M, T> FreestandingVec<M, T> {
         }
         let len = len - 1;
 
-        let ptr = self.as_mut_ptr().cast::<u8>();
+        let ptr = self.data;
         let &mut Header {
             ref mut metadata,
             value_size,
@@ -249,7 +245,10 @@ impl<M, T> FreestandingVec<M, T> {
             len: ref mut header_len,
             capacity: _,
         } = unsafe { Header::from_mut(self) };
-        let ptr = unsafe { NonNull::new_unchecked(ptr.add(len * value_size)) };
+        let ptr = {
+            let base = cmp::max(size_of::<FirstEntry<M, ()>>(), value_size);
+            unsafe { NonNull::new_unchecked(ptr.cast::<u8>().add(base + len * value_size)) }
+        };
 
         *header_len = len;
         Some(f(metadata, ptr.cast()))
