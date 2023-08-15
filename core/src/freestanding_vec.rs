@@ -265,6 +265,9 @@ impl<M, T> Drop for FreestandingVec<M, T> {
 mod tests {
     use std::{cell::Cell, mem::transmute, rc::Rc};
 
+    use proptest::prelude::*;
+    use proptest_derive::Arbitrary;
+
     use super::*;
 
     #[test]
@@ -438,5 +441,55 @@ mod tests {
         use_(&mut tasks, move || {
             dbg!(v);
         });
+    }
+
+    #[derive(Copy, Clone, Eq, PartialEq, Debug, Arbitrary)]
+    enum Path {
+        Push,
+        Pop,
+        Clear,
+        Replace,
+    }
+
+    proptest! {
+        #[test]
+        #[cfg(not(miri))]
+        fn all(path: Vec<Path>) {
+            #[repr(align(512))]
+            #[derive(Clone, Debug)]
+            struct Big(Vec<usize>);
+
+            let mut v = FreestandingVec::<Big, Big>::new();
+            for (i, choice) in path.iter().enumerate() {
+                match choice {
+                    Path::Push => {
+                        let val = Big((0..i).collect());
+                        let mut init = val.clone();
+                        v.push(val, || {
+                            init.0.reverse();
+                            init
+                        });
+                    }
+                    Path::Pop => {
+                        if let Some(m) = v.pop(|_, ptr| unsafe { ptr.as_ptr().read() }).and_then(|b| b.0.into_iter().max()) {
+                            assert!(m < i);
+                        }
+                    }
+                    Path::Clear => {
+                        while v
+                            .pop(|_, ptr| unsafe { ptr.as_ptr().drop_in_place() })
+                            .is_some()
+                        {}
+                    }
+                    Path::Replace => {
+                        while v
+                            .pop(|_, ptr| unsafe { ptr.as_ptr().drop_in_place() })
+                            .is_some()
+                        {}
+                        v = FreestandingVec::new();
+                    }
+                }
+            }
+        }
     }
 }
