@@ -1,4 +1,4 @@
-use std::mem;
+use std::{mem, time::Duration};
 
 use criterion::{
     criterion_group, criterion_main, measurement::Measurement, AxisScale, BatchSize,
@@ -135,7 +135,7 @@ fn big(c: &mut Criterion) {
 
 criterion_group! {
     name = benches;
-    config = Criterion::default();
+    config = Criterion::default().noise_threshold(0.02).warm_up_time(Duration::from_secs(1));
     targets =
     zst,
     normal,
