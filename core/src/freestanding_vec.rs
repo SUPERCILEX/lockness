@@ -42,7 +42,7 @@ impl<M, T> FreestandingVec<M, T> {
         4
     } else {
         1
-    };
+    } * size_of::<T>();
 
     #[must_use]
     pub const fn new() -> Self {
@@ -99,12 +99,15 @@ impl<M, T> FreestandingVec<M, T> {
         unsafe { Header::from_ref(self) }.len
     }
 
-    fn capacity(&self) -> usize {
+    fn base_capacity_bytes(&self) -> usize {
         if !self.is_allocated() {
-            return 0;
+            return size_of::<FirstEntry<M, T>>();
         }
 
-        unsafe { Header::from_ref(self) }.capacity
+        cmp::max(
+            size_of::<FirstEntry<M, T>>(),
+            unsafe { Header::from_ref(self) }.value_size,
+        )
     }
 
     fn capacity_bytes(&self) -> usize {
@@ -112,60 +115,42 @@ impl<M, T> FreestandingVec<M, T> {
             return 0;
         }
 
-        let &Header {
-            metadata: _,
-            value_size,
-            alignment: _,
-            len: _,
-            capacity,
-        } = unsafe { Header::from_ref(self) };
-        cmp::max(size_of::<FirstEntry<M, ()>>(), value_size) + value_size * capacity
+        unsafe { Header::from_ref(self) }.capacity
     }
 
-    fn reserve(&mut self, additional: usize) -> usize {
+    fn reserve(&mut self, additional_bytes: usize) -> usize {
         let layout;
         let new_capacity;
 
         let ptr = if self.is_allocated() {
-            if size_of::<T>() == 0 {
-                return 0;
+            if additional_bytes == 0 {
+                return self.capacity_bytes();
             }
 
-            let required_cap = self.len().checked_add(additional).unwrap();
+            let required_cap = (self.len() * size_of::<T>() + self.base_capacity_bytes())
+                .checked_add(additional_bytes)
+                .unwrap();
 
-            let og_cap = self.capacity();
+            let og_cap = self.capacity_bytes();
             if og_cap >= required_cap {
                 return og_cap;
             }
 
-            new_capacity = cmp::max(og_cap * 2, required_cap);
+            new_capacity = cmp::max(
+                Self::MIN_NON_ZERO_CAP,
+                cmp::max(og_cap.checked_mul(2).unwrap(), required_cap),
+            );
             layout = unsafe {
-                Layout::from_size_align_unchecked(
-                    self.capacity_bytes(),
-                    align_of::<FirstEntry<M, T>>(),
-                )
+                Layout::from_size_align_unchecked(og_cap, align_of::<FirstEntry<M, T>>())
             };
 
-            unsafe {
-                realloc(
-                    self.data.cast(),
-                    layout,
-                    size_of::<T>()
-                        .checked_mul(new_capacity)
-                        .and_then(|bytes| size_of::<FirstEntry<M, T>>().checked_add(bytes))
-                        .unwrap(),
-                )
-            }
+            unsafe { realloc(self.data.cast(), layout, new_capacity) }
         } else {
-            new_capacity = if size_of::<T>() == 0 { 0 } else { additional };
+            new_capacity = cmp::max(Self::MIN_NON_ZERO_CAP, additional_bytes)
+                .checked_add(self.base_capacity_bytes())
+                .unwrap();
             layout = unsafe {
-                Layout::from_size_align_unchecked(
-                    size_of::<T>()
-                        .checked_mul(new_capacity)
-                        .and_then(|bytes| size_of::<FirstEntry<M, T>>().checked_add(bytes))
-                        .unwrap(),
-                    align_of::<FirstEntry<M, T>>(),
-                )
+                Layout::from_size_align_unchecked(new_capacity, align_of::<FirstEntry<M, T>>())
             };
 
             unsafe { alloc(layout) }
@@ -191,7 +176,7 @@ impl<M, T> FreestandingVec<M, T> {
         }
         let was_allocated = self.is_allocated();
 
-        let capacity = self.reserve(Self::MIN_NON_ZERO_CAP);
+        let capacity = self.reserve(size_of::<T>());
         let ptr = self.data.cast::<Header<M>>();
         let header = Header {
             metadata,
@@ -213,7 +198,7 @@ impl<M, T> FreestandingVec<M, T> {
 
     pub fn push(&mut self, value: T, init: impl FnOnce() -> M) {
         self.maybe_init(init);
-        let new_cap = self.reserve(1);
+        let new_cap = self.reserve(size_of::<T>());
 
         let ptr = self.data;
         let Header {
@@ -424,24 +409,24 @@ mod tests {
 
     #[test]
     fn validate_reuse_with_different_type() {
-        fn use_<F: FnOnce() + Clone + 'static>(tasks: &mut FreestandingVec<(), ()>, f: F) {
+        fn use_<F: Clone>(tasks: &mut FreestandingVec<(), ()>, f: F) {
             let tasks = unsafe { &mut *ptr::from_mut(tasks).cast::<FreestandingVec<(), F>>() };
-            tasks.push(f, || ());
-            assert!(
-                tasks
-                    .pop(|(), ptr| unsafe { ptr.as_ptr().read() }())
-                    .is_some()
-            );
+            for _ in 0..4 {
+                tasks.push(f.clone(), || ());
+            }
+            for _ in 0..4 {
+                assert!(
+                    tasks
+                        .pop(|(), ptr| unsafe { ptr.as_ptr().read() })
+                        .is_some()
+                );
+            }
         }
 
         let mut tasks = FreestandingVec::new();
-        use_(&mut tasks, || {
-            dbg!(42);
-        });
-        let v = vec!["a", "b", "c"];
-        use_(&mut tasks, move || {
-            dbg!(v);
-        });
+
+        use_(&mut tasks, 42usize);
+        use_(&mut tasks, vec!["a", "b", "c"]);
     }
 
     #[derive(Copy, Clone, Eq, PartialEq, Debug, Arbitrary)]
