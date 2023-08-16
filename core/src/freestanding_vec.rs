@@ -99,17 +99,6 @@ impl<M, T> FreestandingVec<M, T> {
         unsafe { Header::from_ref(self) }.len
     }
 
-    fn base_capacity_bytes(&self) -> usize {
-        if !self.is_allocated() {
-            return size_of::<FirstEntry<M, T>>();
-        }
-
-        cmp::max(
-            size_of::<FirstEntry<M, T>>(),
-            unsafe { Header::from_ref(self) }.value_size,
-        )
-    }
-
     fn capacity_bytes(&self) -> usize {
         if !self.is_allocated() {
             return 0;
@@ -127,7 +116,7 @@ impl<M, T> FreestandingVec<M, T> {
                 return self.capacity_bytes();
             }
 
-            let required_cap = (self.len() * size_of::<T>() + self.base_capacity_bytes())
+            let required_cap = (self.len() * size_of::<T>() + size_of::<FirstEntry<M, T>>())
                 .checked_add(additional_bytes)
                 .unwrap();
 
@@ -147,7 +136,7 @@ impl<M, T> FreestandingVec<M, T> {
             unsafe { realloc(self.data.cast(), layout, new_capacity) }
         } else {
             new_capacity = cmp::max(Self::MIN_NON_ZERO_CAP, additional_bytes)
-                .checked_add(self.base_capacity_bytes())
+                .checked_add(size_of::<FirstEntry<M, T>>())
                 .unwrap();
             layout = unsafe {
                 Layout::from_size_align_unchecked(new_capacity, align_of::<FirstEntry<M, T>>())
