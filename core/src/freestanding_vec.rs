@@ -42,19 +42,20 @@ impl<M, T> FreestandingVec<M, T> {
         4
     } else {
         1
-    } * size_of::<T>();
+    } * size_of::<T>()
+        + size_of::<FirstEntry<M, T>>();
 
     #[must_use]
-    pub const fn new() -> Self {
-        Self {
+    pub fn new(metadata: M) -> Self {
+        let mut me = Self {
             data: ptr::null_mut(),
-        }
+        };
+        me.init(metadata);
+        me
     }
 
     fn deallocate(&mut self) {
-        if !self.is_allocated() {
-            return;
-        }
+        debug_assert!(self.is_allocated());
 
         let &mut Header {
             ref mut metadata,
@@ -92,58 +93,22 @@ impl<M, T> FreestandingVec<M, T> {
     }
 
     fn len(&self) -> usize {
-        if !self.is_allocated() {
-            return 0;
-        }
-
+        debug_assert!(self.is_allocated());
         unsafe { Header::from_ref(self) }.len
     }
 
     fn capacity_bytes(&self) -> usize {
-        if !self.is_allocated() {
-            return 0;
-        }
-
+        debug_assert!(self.is_allocated());
         unsafe { Header::from_ref(self) }.capacity
     }
 
-    fn reserve(&mut self, additional_bytes: usize) -> usize {
-        let layout;
-        let new_capacity;
+    fn allocate(&mut self) -> usize {
+        debug_assert!(!self.is_allocated());
 
-        let ptr = if self.is_allocated() {
-            if additional_bytes == 0 {
-                return self.capacity_bytes();
-            }
-
-            let required_cap = (self.len() * size_of::<T>() + size_of::<FirstEntry<M, T>>())
-                .checked_add(additional_bytes)
-                .unwrap();
-
-            let og_cap = self.capacity_bytes();
-            if og_cap >= required_cap {
-                return og_cap;
-            }
-
-            new_capacity = cmp::max(
-                Self::MIN_NON_ZERO_CAP,
-                cmp::max(og_cap.checked_mul(2).unwrap(), required_cap),
-            );
-            layout = unsafe {
-                Layout::from_size_align_unchecked(og_cap, align_of::<FirstEntry<M, T>>())
-            };
-
-            unsafe { realloc(self.data.cast(), layout, new_capacity) }
-        } else {
-            new_capacity = cmp::max(Self::MIN_NON_ZERO_CAP, additional_bytes)
-                .checked_add(size_of::<FirstEntry<M, T>>())
-                .unwrap();
-            layout = unsafe {
-                Layout::from_size_align_unchecked(new_capacity, align_of::<FirstEntry<M, T>>())
-            };
-
-            unsafe { alloc(layout) }
-        };
+        let capacity = Self::MIN_NON_ZERO_CAP;
+        let layout =
+            unsafe { Layout::from_size_align_unchecked(capacity, align_of::<FirstEntry<M, T>>()) };
+        let ptr = unsafe { alloc(layout) };
 
         if ptr.is_null() {
             handle_alloc_error(layout);
@@ -151,21 +116,52 @@ impl<M, T> FreestandingVec<M, T> {
             self.data = ptr.cast();
         }
 
-        new_capacity
+        capacity
     }
 
-    fn maybe_init(&mut self, init: impl FnOnce() -> M) {
-        if !self.is_empty() {
+    fn reserve(&mut self, additional_bytes: usize) {
+        if additional_bytes == 0 {
             return;
         }
-        let metadata = init();
 
-        if !self.data.is_aligned() {
+        let required_cap = (self.len() * size_of::<T>() + size_of::<FirstEntry<M, T>>())
+            .checked_add(additional_bytes)
+            .expect("Requested allocation overflows");
+
+        let og_cap = self.capacity_bytes();
+        if og_cap >= required_cap {
+            return;
+        }
+
+        let new_capacity = cmp::max(og_cap.saturating_mul(2), required_cap);
+        let layout =
+            unsafe { Layout::from_size_align_unchecked(og_cap, align_of::<FirstEntry<M, T>>()) };
+        let ptr = unsafe { realloc(self.data.cast(), layout, new_capacity) };
+
+        if ptr.is_null() {
+            handle_alloc_error(layout);
+        } else {
+            self.data = ptr.cast();
+        }
+
+        unsafe { Header::from_mut(self) }.capacity = new_capacity;
+    }
+
+    pub fn init(&mut self, metadata: M) {
+        if !self.data.is_aligned() && self.is_allocated() {
             self.deallocate();
         }
-        let was_allocated = self.is_allocated();
+        if self.is_allocated() && self.capacity_bytes() < Self::MIN_NON_ZERO_CAP {
+            self.reserve(Self::MIN_NON_ZERO_CAP - self.capacity_bytes());
+        }
 
-        let capacity = self.reserve(size_of::<T>());
+        let was_allocated = self.is_allocated();
+        let capacity = if self.is_allocated() {
+            self.capacity_bytes()
+        } else {
+            self.allocate()
+        };
+
         let ptr = self.data.cast::<Header<M>>();
         let header = Header {
             metadata,
@@ -185,24 +181,12 @@ impl<M, T> FreestandingVec<M, T> {
         }
     }
 
-    pub fn push(&mut self, value: T, init: impl FnOnce() -> M) {
-        self.maybe_init(init);
-        let new_cap = self.reserve(size_of::<T>());
-
-        let ptr = self.data;
-        let Header {
-            metadata: _,
-            value_size: _,
-            alignment: _,
-            len,
-            capacity,
-        } = unsafe { Header::from_mut(self) };
+    pub fn push(&mut self, value: T) {
+        self.reserve(size_of::<T>());
         unsafe {
-            ptr.add(1).cast::<T>().add(*len).write(value);
+            self.data.add(1).cast::<T>().add(self.len()).write(value);
+            Header::from_mut(self).len += 1;
         }
-
-        *len += 1;
-        *capacity = new_cap;
     }
 
     pub fn pop<O, F: FnOnce(&mut M, NonNull<T>) -> O>(&mut self, f: F) -> Option<O> {
@@ -238,7 +222,7 @@ impl<M, T> Drop for FreestandingVec<M, T> {
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::Cell, mem::transmute, rc::Rc};
+    use std::mem::transmute;
 
     use proptest::prelude::*;
     use proptest_derive::Arbitrary;
@@ -247,11 +231,11 @@ mod tests {
 
     #[test]
     fn validate_empty() {
-        let mut v = FreestandingVec::new();
+        let mut v = FreestandingVec::new(());
         assert!(v.is_empty());
 
         for i in 0..3 {
-            v.push(i, || ());
+            v.push(i);
             assert!(!v.is_empty());
         }
 
@@ -264,14 +248,14 @@ mod tests {
 
     #[test]
     fn validate_do_nothing() {
-        drop(FreestandingVec::<Vec<usize>, Vec<usize>>::new());
+        drop(FreestandingVec::<Vec<usize>, Vec<usize>>::new(vec![1]));
     }
 
     #[test]
     fn validate_type_erased_ops() {
-        let mut v = FreestandingVec::new();
+        let mut v = FreestandingVec::new(|| ());
 
-        v.push("42".to_string(), || ());
+        v.push("42".to_string());
 
         let mut v = unsafe { transmute::<_, FreestandingVec<(), ()>>(v) };
         assert_eq!(
@@ -282,11 +266,11 @@ mod tests {
 
     #[test]
     fn validate_raw() {
-        let mut v = FreestandingVec::new();
-        v.push(2048u32, || ());
+        let mut v = FreestandingVec::new(|| ());
+        v.push(2048u32);
 
-        let mut v = unsafe { FreestandingVec::from_raw(v.into_raw()) };
-        v.push(1234u32, || ());
+        let mut v = unsafe { FreestandingVec::<(), _>::from_raw(v.into_raw()) };
+        v.push(1234u32);
 
         let mut v = unsafe { FreestandingVec::<(), ()>::from_raw(v.into_raw().cast()) };
         assert_eq!(
@@ -301,10 +285,10 @@ mod tests {
 
     #[test]
     fn zst() {
-        let mut v = FreestandingVec::new();
+        let mut v = FreestandingVec::new(());
 
         for i in 0..1000 {
-            v.push(i, || ());
+            v.push(i);
         }
         for i in (0..1000).rev() {
             assert_eq!(Some(i), v.pop(|(), ptr| unsafe { ptr.as_ptr().read() }));
@@ -313,19 +297,12 @@ mod tests {
 
     #[test]
     fn normal() {
-        let mut v = FreestandingVec::new();
+        let mut v = FreestandingVec::new(vec![1, 2, 3]);
 
         {
-            let initialized = Rc::<Cell<bool>>::new(Cell::new(false));
             for i in 0..1000 {
-                v.push(Box::new(i), || {
-                    assert!(!initialized.get());
-                    initialized.set(true);
-
-                    vec![1, 2, 3]
-                });
+                v.push(Box::new(i));
             }
-            assert!(initialized.get());
         }
 
         for i in (0..1000).rev() {
@@ -345,21 +322,14 @@ mod tests {
         #[derive(Clone, Debug)]
         struct Big(Vec<usize>);
 
-        let mut v = FreestandingVec::new();
+        let mut v = FreestandingVec::new(vec![1, 2, 3]);
 
         {
-            let initialized = Rc::<Cell<bool>>::new(Cell::new(false));
             let mut b = Big(Vec::new());
             for i in 0..100 {
                 b.0.push(i);
-                v.push(b.clone(), || {
-                    assert!(!initialized.get());
-                    initialized.set(true);
-
-                    vec![1, 2, 3]
-                });
+                v.push(b.clone());
             }
-            assert!(initialized.get());
         }
 
         for i in (0..100).rev() {
@@ -385,23 +355,17 @@ mod tests {
             }
         }
 
-        let mut v = FreestandingVec::new();
-        v.push((), || P);
-    }
-
-    #[test]
-    #[should_panic]
-    fn panic_in_init() {
-        let mut v = FreestandingVec::new();
-        v.push((), || panic!("Don't even start"));
+        let mut v = FreestandingVec::new(P);
+        v.push(());
     }
 
     #[test]
     fn validate_reuse_with_different_type() {
         fn use_<F: Clone>(tasks: &mut FreestandingVec<(), ()>, f: F) {
             let tasks = unsafe { &mut *ptr::from_mut(tasks).cast::<FreestandingVec<(), F>>() };
+            tasks.init(());
             for _ in 0..4 {
-                tasks.push(f.clone(), || ());
+                tasks.push(f.clone());
             }
             for _ in 0..4 {
                 assert!(
@@ -412,7 +376,7 @@ mod tests {
             }
         }
 
-        let mut tasks = FreestandingVec::new();
+        let mut tasks = FreestandingVec::new(());
 
         use_(&mut tasks, 42usize);
         use_(&mut tasks, vec!["a", "b", "c"]);
@@ -434,19 +398,19 @@ mod tests {
             #[derive(Clone, Debug)]
             struct Big(Vec<usize>);
 
-            let mut v = FreestandingVec::<Big, Big>::new();
+            let mut v = FreestandingVec::<Big, Big>::new(Big((0..100).rev().collect()));
             for (i, choice) in path.iter().enumerate() {
                 match choice {
                     Path::Push => {
                         let val = Big((0..i).collect());
-                        let mut init = val.clone();
-                        v.push(val, || {
-                            init.0.reverse();
-                            init
-                        });
+                        let _init = val.clone();
+                        v.push(val);
                     }
                     Path::Pop => {
-                        if let Some(m) = v.pop(|_, ptr| unsafe { ptr.as_ptr().read() }).and_then(|b| b.0.into_iter().max()) {
+                        if let Some(m) = v
+                            .pop(|_, ptr| unsafe { ptr.as_ptr().read() })
+                            .and_then(|b| b.0.into_iter().max())
+                        {
                             assert!(m < i);
                         }
                     }
@@ -461,7 +425,7 @@ mod tests {
                             .pop(|_, ptr| unsafe { ptr.as_ptr().drop_in_place() })
                             .is_some()
                         {}
-                        v = FreestandingVec::new();
+                        v = FreestandingVec::new(Big((0..i).rev().collect()));
                     }
                 }
             }
