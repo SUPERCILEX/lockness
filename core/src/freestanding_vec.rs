@@ -17,12 +17,12 @@ struct Header<M> {
 impl<M> Header<M> {
     unsafe fn from_ref<T>(value: &'_ FreestandingVec<M, T>) -> &'_ Self {
         debug_assert!(value.is_allocated());
-        unsafe { &*value.data.cast::<Self>() }
+        unsafe { value.data.cast::<Self>().as_ref() }
     }
 
     unsafe fn from_mut<T>(value: &'_ mut FreestandingVec<M, T>) -> &'_ mut Self {
         debug_assert!(value.is_allocated());
-        unsafe { &mut *value.data.cast::<Self>() }
+        unsafe { value.data.cast::<Self>().as_mut() }
     }
 }
 
@@ -32,7 +32,7 @@ union FirstEntry<M, T> {
 }
 
 pub struct FreestandingVec<M, T> {
-    data: *mut FirstEntry<M, T>,
+    data: NonNull<FirstEntry<M, T>>,
 }
 
 impl<M, T> FreestandingVec<M, T> {
@@ -48,7 +48,7 @@ impl<M, T> FreestandingVec<M, T> {
     #[must_use]
     pub fn new(metadata: M) -> Self {
         let mut me = Self {
-            data: ptr::null_mut(),
+            data: NonNull::dangling(),
         };
         me.init(metadata);
         me
@@ -68,23 +68,25 @@ impl<M, T> FreestandingVec<M, T> {
         let _metadata_for_drop = unsafe { ptr::from_mut(metadata).read() };
         unsafe {
             let layout = Layout::from_size_align_unchecked(self.capacity_bytes(), alignment);
-            dealloc(self.data.cast(), layout);
+            dealloc(self.data.cast().as_ptr(), layout);
         }
-        self.data = ptr::null_mut();
+        self.data = NonNull::dangling();
     }
 
     fn is_allocated(&self) -> bool {
-        !self.data.is_null()
+        self.data != NonNull::dangling()
     }
 
     #[must_use]
     pub fn into_raw(self) -> *mut () {
         let this = ManuallyDrop::new(self);
-        this.data.cast()
+        this.data.cast().as_ptr()
     }
 
     pub const unsafe fn from_raw(ptr: *mut ()) -> Self {
-        Self { data: ptr.cast() }
+        Self {
+            data: unsafe { NonNull::new_unchecked(ptr.cast()) },
+        }
     }
 
     #[must_use]
@@ -110,10 +112,10 @@ impl<M, T> FreestandingVec<M, T> {
             unsafe { Layout::from_size_align_unchecked(capacity, align_of::<FirstEntry<M, T>>()) };
         let ptr = unsafe { alloc(layout) };
 
-        if ptr.is_null() {
-            handle_alloc_error(layout);
+        if let Some(ptr) = NonNull::new(ptr.cast()) {
+            self.data = ptr;
         } else {
-            self.data = ptr.cast();
+            handle_alloc_error(layout);
         }
 
         capacity
@@ -136,19 +138,19 @@ impl<M, T> FreestandingVec<M, T> {
         let new_capacity = cmp::max(og_cap.saturating_mul(2), required_cap);
         let layout =
             unsafe { Layout::from_size_align_unchecked(og_cap, align_of::<FirstEntry<M, T>>()) };
-        let ptr = unsafe { realloc(self.data.cast(), layout, new_capacity) };
+        let ptr = unsafe { realloc(self.data.cast().as_ptr(), layout, new_capacity) };
 
-        if ptr.is_null() {
-            handle_alloc_error(layout);
+        if let Some(ptr) = NonNull::new(ptr.cast()) {
+            self.data = ptr;
         } else {
-            self.data = ptr.cast();
+            handle_alloc_error(layout);
         }
 
         unsafe { Header::from_mut(self) }.capacity = new_capacity;
     }
 
     pub fn init(&mut self, metadata: M) {
-        if !self.data.is_aligned() && self.is_allocated() {
+        if !self.data.as_ptr().is_aligned() && self.is_allocated() {
             self.deallocate();
         }
         if self.is_allocated() && self.capacity_bytes() < Self::MIN_NON_ZERO_CAP {
@@ -162,7 +164,7 @@ impl<M, T> FreestandingVec<M, T> {
             self.allocate()
         };
 
-        let ptr = self.data.cast::<Header<M>>();
+        let ptr = self.data.cast::<Header<M>>().as_ptr();
         let header = Header {
             metadata,
             value_size: size_of::<T>(),
@@ -184,7 +186,12 @@ impl<M, T> FreestandingVec<M, T> {
     pub fn push(&mut self, value: T) {
         self.reserve(size_of::<T>());
         unsafe {
-            self.data.add(1).cast::<T>().add(self.len()).write(value);
+            self.data
+                .as_ptr()
+                .add(1)
+                .cast::<T>()
+                .add(self.len())
+                .write(value);
             Header::from_mut(self).len += 1;
         }
     }
@@ -206,7 +213,9 @@ impl<M, T> FreestandingVec<M, T> {
         } = unsafe { Header::from_mut(self) };
         let ptr = {
             let base = cmp::max(size_of::<FirstEntry<M, ()>>(), value_size);
-            unsafe { NonNull::new_unchecked(ptr.cast::<u8>().add(base + len * value_size)) }
+            unsafe {
+                NonNull::new_unchecked(ptr.cast::<u8>().as_ptr().add(base + len * value_size))
+            }
         };
 
         *header_len = len;
