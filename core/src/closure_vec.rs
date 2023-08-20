@@ -10,11 +10,11 @@ struct Metadata {
     task_fn: NonNull<()>,
 }
 
-pub struct ClosureVec<F: FnOnce() + 'static> {
+pub struct ClosureVec<F: FnOnce()> {
     data: FreestandingVec<Metadata, F>,
 }
 
-impl<F: FnOnce() + 'static> ClosureVec<F> {
+impl<F: FnOnce()> ClosureVec<F> {
     const INIT: Metadata = {
         unsafe fn call<F: FnOnce()>(f: NonNull<()>, just_drop: bool) {
             let f = unsafe { f.cast::<F>().as_ptr().read() };
@@ -82,7 +82,7 @@ impl<F: FnOnce() + 'static> ClosureVec<F> {
     }
 }
 
-impl<F: FnOnce() + 'static> Default for ClosureVec<F> {
+impl<F: FnOnce()> Default for ClosureVec<F> {
     fn default() -> Self {
         Self::new()
     }
@@ -100,7 +100,7 @@ mod tests {
 
     use super::*;
 
-    fn validate_correctness<F: FnOnce() + 'static>(mut f: impl FnMut(usize) -> F) {
+    fn validate_correctness<F: FnOnce()>(mut f: impl FnMut(usize) -> F) {
         let mut tasks = ClosureVec::new();
 
         let count = Rc::new(Cell::new(0));
@@ -118,7 +118,7 @@ mod tests {
         assert_eq!(3, count.get());
     }
 
-    fn validate_empty<F: FnOnce() + 'static>(mut f: impl FnMut(usize) -> F) {
+    fn validate_empty<F: FnOnce()>(mut f: impl FnMut(usize) -> F) {
         let mut tasks = ClosureVec::new();
         assert!(tasks.is_empty());
 
@@ -135,14 +135,14 @@ mod tests {
     }
 
     //noinspection RsConstantConditionIf
-    fn validate_do_nothing<F: FnOnce() + 'static>(mut f: impl FnMut(usize) -> F) {
+    fn validate_do_nothing<F: FnOnce()>(mut f: impl FnMut(usize) -> F) {
         let mut tasks = ClosureVec::new();
         if false {
             tasks.push(f(42));
         }
     }
 
-    fn validate_drop_without_running<F: FnOnce() + 'static>(mut f: impl FnMut(usize) -> F) {
+    fn validate_drop_without_running<F: FnOnce()>(mut f: impl FnMut(usize) -> F) {
         let mut tasks = ClosureVec::new();
         let f = f(69);
         tasks.push(move || {
@@ -151,7 +151,7 @@ mod tests {
         });
     }
 
-    fn validate_type_erased_ops<F: FnOnce() + 'static>(mut f: impl FnMut(usize) -> F) {
+    fn validate_type_erased_ops<F: FnOnce()>(mut f: impl FnMut(usize) -> F) {
         let mut tasks = ClosureVec::new();
         let count = Rc::new(Cell::new(0));
 
@@ -169,7 +169,7 @@ mod tests {
         assert_eq!(666, count.get());
     }
 
-    fn validate_clear_add_cycle<F: FnOnce() + 'static>(mut f: impl FnMut(usize) -> F) {
+    fn validate_clear_add_cycle<F: FnOnce()>(mut f: impl FnMut(usize) -> F) {
         let mut tasks = ClosureVec::new();
 
         let count = Rc::new(Cell::new(0));
@@ -189,7 +189,7 @@ mod tests {
         assert_eq!(1, count.get());
     }
 
-    fn validate_raw<F: FnOnce() + 'static>(mut f: impl FnMut(usize) -> F) {
+    fn validate_raw<F: FnOnce()>(mut f: impl FnMut(usize) -> F) {
         let mut tasks = ClosureVec::new();
         tasks.push(f(2048));
 
@@ -200,7 +200,7 @@ mod tests {
         while !(tasks.pop_and_run()) {}
     }
 
-    fn validate_all<F: FnOnce() + 'static>(c: impl FnMut(usize) -> F + Clone + 'static) {
+    fn validate_all<F: FnOnce()>(c: impl FnMut(usize) -> F + Clone) {
         validate_correctness(c.clone());
         validate_empty(c.clone());
         validate_clear_add_cycle(c.clone());
@@ -276,7 +276,7 @@ mod tests {
 
     #[test]
     fn validate_reuse_with_different_type() {
-        fn use_<F: FnOnce() + Clone + 'static>(tasks: &mut ClosureVec<fn()>, f: F) {
+        fn use_<F: FnOnce() + Clone>(tasks: &mut ClosureVec<fn()>, f: F) {
             let tasks = unsafe { &mut *ptr::from_mut(tasks).cast::<ClosureVec<F>>() };
             tasks.update_type();
             tasks.push(f.clone());
