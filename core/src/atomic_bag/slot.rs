@@ -15,6 +15,7 @@ use std::{
 
 use super::Allocated;
 
+#[must_use]
 pub fn mpsc<T: Allocated>() -> (Sender<T>, SoloReceiver<T>) {
     let inner = Arc::new(Inner {
         ptr: AtomicPtr::new(ptr::null_mut()),
@@ -25,9 +26,7 @@ pub fn mpsc<T: Allocated>() -> (Sender<T>, SoloReceiver<T>) {
         Sender {
             inner: inner.clone(),
         },
-        SoloReceiver {
-            inner: inner.clone(),
-        },
+        SoloReceiver { inner },
     )
 }
 
@@ -117,18 +116,22 @@ impl<T: Allocated> Clone for Sender<T> {
 }
 
 impl<T: Allocated> SoloReceiver<T> {
+    #[must_use]
     pub fn try_recv(&self) -> Option<T> {
         self.recv_(None)
     }
 
+    #[must_use]
     pub fn recv(&self) -> Option<T> {
         self.recv_timeout(Duration::MAX)
     }
 
+    #[must_use]
     pub fn recv_timeout(&self, timeout: Duration) -> Option<T> {
         self.recv_(Instant::now().checked_add(timeout))
     }
 
+    #[must_use]
     pub fn recv_deadline(&self, deadline: Instant) -> Option<T> {
         self.recv_(Some(deadline))
     }
