@@ -1,5 +1,5 @@
 use std::{
-    ptr,
+    ptr::NonNull,
     sync::{
         atomic::{
             AtomicPtr, AtomicUsize,
@@ -11,12 +11,12 @@ use std::{
 };
 
 use receiver_impls::{MultipleReceiverImpl, SingleReceiverImpl};
-use status::{Block, SLEEP_MASK};
+use status::Block;
 
 pub trait Allocated {
-    fn into_ptr(self) -> *mut ();
+    fn into_ptr(self) -> NonNull<()>;
 
-    unsafe fn from_ptr(ptr: *mut ()) -> Self;
+    unsafe fn from_ptr(ptr: NonNull<()>) -> Self;
 }
 
 pub type SingleReceiver<const N: usize, T> = Receiver<N, T, SingleReceiverImpl<N, T>>;
@@ -68,7 +68,10 @@ impl<const N: usize, T: Allocated, const IS_MULTIPLE_RECEIVER: bool>
         }
 
         if IS_MULTIPLE_RECEIVER {
-            if bag[index].swap(value.into_ptr().cast(), Release) != ptr::null_mut() {
+            if !bag[index]
+                .swap(value.into_ptr().as_ptr().cast(), Release)
+                .is_null()
+            {
                 // Protocol:
                 // - The receiver always swaps read ptrs with 0.
                 // - A set bit in the status implies eventual consistency in the atomic ptr
@@ -86,11 +89,11 @@ impl<const N: usize, T: Allocated, const IS_MULTIPLE_RECEIVER: bool>
                 todo!("wake")
             }
         } else {
-            bag[index].store(value.into_ptr().cast(), Release);
+            bag[index].store(value.into_ptr().as_ptr().cast(), Release);
         }
 
         if status_view.is_sleeping() {
-            status.fetch_and(!SLEEP_MASK, Relaxed);
+            // status.fetch_and(!SLEEP_MASK, Relaxed);
 
             todo!("wake");
         }
@@ -109,36 +112,65 @@ impl<const N: usize, T: Allocated, I: ReceiverImpl<T>> Receiver<N, T, I> {
             todo!("wait");
         }
 
-        status_view.into_iter().map(|Block { index, mask }| {
-            let ptr = internal.retrieve_ptr(mask, status, &bag[index]);
-            unsafe { T::from_ptr(ptr.cast()) }
+        status_view.into_iter().filter_map(|block| {
+            internal
+                .retrieve_ptr(block, status, bag)
+                .map(|ptr| unsafe { T::from_ptr(ptr.cast()) })
         })
     }
 }
 
 pub trait ReceiverImpl<T> {
-    fn retrieve_ptr(&self, mask: usize, status: &AtomicUsize, ptr: &AtomicPtr<T>) -> *mut T;
+    fn retrieve_ptr(
+        &self,
+        block: Block,
+        status: &AtomicUsize,
+        bag: &[AtomicPtr<T>],
+    ) -> Option<NonNull<T>>;
 }
 
 mod receiver_impls {
-    use std::sync::atomic::{AtomicPtr, AtomicUsize};
+    use std::{
+        ptr::NonNull,
+        sync::atomic::{
+            AtomicPtr, AtomicUsize,
+            Ordering::{Acquire, Relaxed},
+        },
+    };
 
     use super::ReceiverImpl;
+    use crate::atomic_bag::status::Block;
 
     pub struct SingleReceiverImpl<const N: usize, T> {
         prev_ptrs: [*mut T; N],
     }
 
     impl<const N: usize, T> ReceiverImpl<T> for SingleReceiverImpl<N, T> {
-        fn retrieve_ptr(&self, mask: usize, status: &AtomicUsize, ptr: &AtomicPtr<T>) -> *mut T {
-            todo!()
+        fn retrieve_ptr(
+            &self,
+            Block { index, mask }: Block,
+            status: &AtomicUsize,
+            bag: &[AtomicPtr<T>],
+        ) -> Option<NonNull<T>> {
+            let ptr = bag[index].load(Acquire);
+            if ptr == self.prev_ptrs[index] {
+                return None;
+            }
+
+            status.fetch_and(!mask, Relaxed);
+            Some(unsafe { NonNull::new_unchecked(ptr) })
         }
     }
 
     pub struct MultipleReceiverImpl;
 
     impl<T> ReceiverImpl<T> for MultipleReceiverImpl {
-        fn retrieve_ptr(&self, mask: usize, status: &AtomicUsize, ptr: &AtomicPtr<T>) -> *mut T {
+        fn retrieve_ptr(
+            &self,
+            Block { index: _, mask: _ }: Block,
+            _status: &AtomicUsize,
+            _ptr: &[AtomicPtr<T>],
+        ) -> Option<NonNull<T>> {
             todo!()
         }
     }
@@ -156,7 +188,7 @@ mod status {
     #[derive(Copy, Clone, Eq, PartialEq, Debug)]
     pub struct View(usize);
 
-    pub const SLEEP_MASK: usize = 1;
+    const SLEEP_MASK: usize = 1;
 
     impl View {
         pub const fn new(status: usize) -> Self {
@@ -171,6 +203,7 @@ mod status {
             (self.0 & !SLEEP_MASK).count_ones() == 0
         }
 
+        // TODO use max size
         pub fn first_available_block(self) -> Option<Block> {
             let occupied = (self.0 | SLEEP_MASK).leading_ones();
             if occupied == usize::BITS {
