@@ -13,7 +13,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use super::Allocated;
+use crate::Allocated;
 
 #[must_use]
 pub fn mpsc<T: Allocated>() -> (Sender<T>, Receiver<T>) {
@@ -139,7 +139,7 @@ impl<T: Allocated> Receiver<T> {
     fn recv_(&self, deadline: Option<Instant>) -> Option<T> {
         match Kind::from(self.inner.ptr.swap(ptr::null_mut(), Acquire)) {
             Kind::Null => {
-                if let Some(_deadline) = deadline {
+                if let Some(deadline) = deadline {
                     loop {
                         match Kind::from(self.inner.ptr.swap(Kind::SLEEP_SENTINEL, Acquire)) {
                             Kind::Null | Kind::Sleeping => todo!("sleep"),
