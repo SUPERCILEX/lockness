@@ -136,7 +136,7 @@ mod receiver_impls {
 
     use status::Block;
 
-    use super::*;
+    use super::{status, ReceiverImpl};
 
     pub struct SingleReceiverImpl<const N: usize, T> {
         prev_ptrs: [*mut T; N],

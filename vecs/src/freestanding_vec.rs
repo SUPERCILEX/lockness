@@ -20,6 +20,7 @@ impl<M> Header<M> {
         unsafe { value.data.cast::<Self>().as_ref() }
     }
 
+    #[allow(clippy::needless_pass_by_ref_mut)]
     unsafe fn from_mut<T>(value: &'_ mut FreestandingVec<M, T>) -> &'_ mut Self {
         debug_assert!(value.is_allocated());
         unsafe { value.data.cast::<Self>().as_mut() }
@@ -357,7 +358,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "Lol get fucked")]
     fn panic_in_drop() {
         #[derive(Debug)]
         struct P;

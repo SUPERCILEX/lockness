@@ -14,6 +14,7 @@ pub struct ClosureVec<F: FnOnce()> {
     data: FreestandingVec<Metadata, F>,
 }
 
+#[allow(clippy::non_send_fields_in_send_ty)]
 unsafe impl<T: FnOnce() + Send> Send for ClosureVec<T> {}
 
 unsafe impl<T: FnOnce() + Sync> Sync for ClosureVec<T> {}
@@ -247,7 +248,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "Lol get fucked")]
     fn panic_in_drop() {
         #[derive(Debug)]
         struct P;
@@ -267,7 +268,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "Life's tough")]
     fn panic_in_f() {
         let mut tasks = ClosureVec::new();
         let v = vec![true, false];

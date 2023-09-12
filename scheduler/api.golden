@@ -1,0 +1,85 @@
+pub mod lockness_scheduler
+pub struct lockness_scheduler::Builder
+impl lockness_scheduler::Builder
+pub fn lockness_scheduler::Builder::build(self) -> lockness_scheduler::Scheduler<()>
+pub fn lockness_scheduler::Builder::build_for_detached<E: core::marker::Send + 'static>(self) -> lockness_scheduler::Scheduler<E>
+pub fn lockness_scheduler::Builder::max_num_threads(&mut self, max: core::num::nonzero::NonZeroU8) -> &mut Self
+pub fn lockness_scheduler::Builder::new() -> Self
+impl core::default::Default for lockness_scheduler::Builder
+pub fn lockness_scheduler::Builder::default() -> Self
+impl core::marker::Send for lockness_scheduler::Builder
+impl core::marker::Sync for lockness_scheduler::Builder
+impl core::marker::Unpin for lockness_scheduler::Builder
+impl core::panic::unwind_safe::RefUnwindSafe for lockness_scheduler::Builder
+impl core::panic::unwind_safe::UnwindSafe for lockness_scheduler::Builder
+impl<T, U> core::convert::Into<U> for lockness_scheduler::Builder where U: core::convert::From<T>
+pub fn lockness_scheduler::Builder::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for lockness_scheduler::Builder where U: core::convert::Into<T>
+pub type lockness_scheduler::Builder::Error = core::convert::Infallible
+pub fn lockness_scheduler::Builder::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for lockness_scheduler::Builder where U: core::convert::TryFrom<T>
+pub type lockness_scheduler::Builder::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn lockness_scheduler::Builder::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for lockness_scheduler::Builder where T: 'static + core::marker::Sized
+pub fn lockness_scheduler::Builder::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for lockness_scheduler::Builder where T: core::marker::Sized
+pub fn lockness_scheduler::Builder::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for lockness_scheduler::Builder where T: core::marker::Sized
+pub fn lockness_scheduler::Builder::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for lockness_scheduler::Builder
+pub fn lockness_scheduler::Builder::from(t: T) -> T
+pub struct lockness_scheduler::JoinHandle<T>
+impl<T> lockness_scheduler::JoinHandle<T>
+pub fn lockness_scheduler::JoinHandle<T>::result(self) -> T
+impl<T> core::marker::Send for lockness_scheduler::JoinHandle<T> where T: core::marker::Send
+impl<T> core::marker::Sync for lockness_scheduler::JoinHandle<T> where T: core::marker::Sync
+impl<T> core::marker::Unpin for lockness_scheduler::JoinHandle<T> where T: core::marker::Unpin
+impl<T> core::panic::unwind_safe::RefUnwindSafe for lockness_scheduler::JoinHandle<T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<T> core::panic::unwind_safe::UnwindSafe for lockness_scheduler::JoinHandle<T> where T: core::panic::unwind_safe::UnwindSafe
+impl<T, U> core::convert::Into<U> for lockness_scheduler::JoinHandle<T> where U: core::convert::From<T>
+pub fn lockness_scheduler::JoinHandle<T>::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for lockness_scheduler::JoinHandle<T> where U: core::convert::Into<T>
+pub type lockness_scheduler::JoinHandle<T>::Error = core::convert::Infallible
+pub fn lockness_scheduler::JoinHandle<T>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for lockness_scheduler::JoinHandle<T> where U: core::convert::TryFrom<T>
+pub type lockness_scheduler::JoinHandle<T>::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn lockness_scheduler::JoinHandle<T>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for lockness_scheduler::JoinHandle<T> where T: 'static + core::marker::Sized
+pub fn lockness_scheduler::JoinHandle<T>::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for lockness_scheduler::JoinHandle<T> where T: core::marker::Sized
+pub fn lockness_scheduler::JoinHandle<T>::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for lockness_scheduler::JoinHandle<T> where T: core::marker::Sized
+pub fn lockness_scheduler::JoinHandle<T>::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for lockness_scheduler::JoinHandle<T>
+pub fn lockness_scheduler::JoinHandle<T>::from(t: T) -> T
+pub struct lockness_scheduler::Scheduler<E>
+impl<E: core::marker::Send + 'static> lockness_scheduler::Scheduler<E>
+pub fn lockness_scheduler::Scheduler<E>::abort(self)
+pub fn lockness_scheduler::Scheduler<E>::shutdown<Errors: core::iter::traits::iterator::Iterator<Item = E>>(self) -> Errors
+pub fn lockness_scheduler::Scheduler<E>::spawn<F: core::ops::function::FnOnce() -> T + core::marker::Send + 'static, T: core::marker::Send + 'static>(&self, _f: F) -> lockness_scheduler::JoinHandle<T>
+pub fn lockness_scheduler::Scheduler<E>::spawn_detached<F: core::ops::function::FnOnce() -> core::result::Result<(), E> + core::marker::Send + 'static>(&self, _f: F)
+impl<E> core::ops::drop::Drop for lockness_scheduler::Scheduler<E>
+pub fn lockness_scheduler::Scheduler<E>::drop(&mut self)
+impl<E> core::marker::Send for lockness_scheduler::Scheduler<E> where E: core::marker::Send
+impl<E> core::marker::Sync for lockness_scheduler::Scheduler<E> where E: core::marker::Sync
+impl<E> core::marker::Unpin for lockness_scheduler::Scheduler<E> where E: core::marker::Unpin
+impl<E> core::panic::unwind_safe::RefUnwindSafe for lockness_scheduler::Scheduler<E> where E: core::panic::unwind_safe::RefUnwindSafe
+impl<E> core::panic::unwind_safe::UnwindSafe for lockness_scheduler::Scheduler<E> where E: core::panic::unwind_safe::UnwindSafe
+impl<T, U> core::convert::Into<U> for lockness_scheduler::Scheduler<E> where U: core::convert::From<T>
+pub fn lockness_scheduler::Scheduler<E>::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for lockness_scheduler::Scheduler<E> where U: core::convert::Into<T>
+pub type lockness_scheduler::Scheduler<E>::Error = core::convert::Infallible
+pub fn lockness_scheduler::Scheduler<E>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for lockness_scheduler::Scheduler<E> where U: core::convert::TryFrom<T>
+pub type lockness_scheduler::Scheduler<E>::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn lockness_scheduler::Scheduler<E>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for lockness_scheduler::Scheduler<E> where T: 'static + core::marker::Sized
+pub fn lockness_scheduler::Scheduler<E>::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for lockness_scheduler::Scheduler<E> where T: core::marker::Sized
+pub fn lockness_scheduler::Scheduler<E>::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for lockness_scheduler::Scheduler<E> where T: core::marker::Sized
+pub fn lockness_scheduler::Scheduler<E>::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for lockness_scheduler::Scheduler<E>
+pub fn lockness_scheduler::Scheduler<E>::from(t: T) -> T
+pub fn lockness_scheduler::spawn<F: core::ops::function::FnOnce() -> T + core::marker::Send + 'static, T: core::marker::Send + 'static>(_f: F) -> lockness_scheduler::JoinHandle<T>
+pub fn lockness_scheduler::spawn_detached<F: core::ops::function::FnOnce() -> core::result::Result<(), E> + core::marker::Send + 'static, E: core::marker::Send + 'static>(_f: F)

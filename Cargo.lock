@@ -576,6 +576,7 @@ dependencies = [
  "criterion",
  "flume",
  "rayon",
+ "supercilex-tests",
  "tokio",
 ]
 

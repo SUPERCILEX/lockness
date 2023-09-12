@@ -347,9 +347,6 @@ fn mpsc_(group: &mut BenchmarkGroup<WallTime>, num_producers: usize) {
         };
 
         thread::scope(|scope| {
-            let producers = (0..num_producers)
-                .map(|_| scope.spawn(generate.clone()))
-                .collect::<Vec<_>>();
             let result = scope
                 .spawn(move || {
                     let start = Instant::now();
@@ -365,7 +362,10 @@ fn mpsc_(group: &mut BenchmarkGroup<WallTime>, num_producers: usize) {
                 })
                 .join()
                 .unwrap();
-            producers.into_iter().for_each(|t| t.join().unwrap());
+
+            (0..num_producers)
+                .map(|_| scope.spawn(generate.clone()))
+                .for_each(|t| t.join().unwrap());
 
             result
         })
