@@ -35,6 +35,10 @@ pub struct FreestandingVec<M, T> {
     data: NonNull<FirstEntry<M, T>>,
 }
 
+unsafe impl<M: Send, T: Send> Send for FreestandingVec<M, T> {}
+
+unsafe impl<M: Sync, T: Sync> Sync for FreestandingVec<M, T> {}
+
 impl<M, T> FreestandingVec<M, T> {
     const MIN_NON_ZERO_CAP: usize = if size_of::<T>() == 1 {
         8

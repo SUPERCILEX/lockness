@@ -13,8 +13,8 @@ impl<F: core::ops::function::FnOnce()> core::default::Default for lockness_vecs:
 pub fn lockness_vecs::ClosureVec<F>::default() -> Self
 impl<F: core::ops::function::FnOnce()> core::ops::drop::Drop for lockness_vecs::ClosureVec<F>
 pub fn lockness_vecs::ClosureVec<F>::drop(&mut self)
-impl<F> !core::marker::Send for lockness_vecs::ClosureVec<F>
-impl<F> !core::marker::Sync for lockness_vecs::ClosureVec<F>
+impl<T: core::ops::function::FnOnce() + core::marker::Send> core::marker::Send for lockness_vecs::ClosureVec<T>
+impl<T: core::ops::function::FnOnce() + core::marker::Sync> core::marker::Sync for lockness_vecs::ClosureVec<T>
 impl<F> core::marker::Unpin for lockness_vecs::ClosureVec<F>
 impl<F> core::panic::unwind_safe::RefUnwindSafe for lockness_vecs::ClosureVec<F> where F: core::panic::unwind_safe::RefUnwindSafe
 impl<F> core::panic::unwind_safe::UnwindSafe for lockness_vecs::ClosureVec<F> where F: core::panic::unwind_safe::RefUnwindSafe
@@ -45,8 +45,8 @@ pub fn lockness_vecs::FreestandingVec<M, T>::pop<O, F: core::ops::function::FnOn
 pub fn lockness_vecs::FreestandingVec<M, T>::push(&mut self, value: T)
 impl<M, T> core::ops::drop::Drop for lockness_vecs::FreestandingVec<M, T>
 pub fn lockness_vecs::FreestandingVec<M, T>::drop(&mut self)
-impl<M, T> !core::marker::Send for lockness_vecs::FreestandingVec<M, T>
-impl<M, T> !core::marker::Sync for lockness_vecs::FreestandingVec<M, T>
+impl<M: core::marker::Send, T: core::marker::Send> core::marker::Send for lockness_vecs::FreestandingVec<M, T>
+impl<M: core::marker::Sync, T: core::marker::Sync> core::marker::Sync for lockness_vecs::FreestandingVec<M, T>
 impl<M, T> core::marker::Unpin for lockness_vecs::FreestandingVec<M, T>
 impl<M, T> core::panic::unwind_safe::RefUnwindSafe for lockness_vecs::FreestandingVec<M, T> where M: core::panic::unwind_safe::RefUnwindSafe, T: core::panic::unwind_safe::RefUnwindSafe
 impl<M, T> core::panic::unwind_safe::UnwindSafe for lockness_vecs::FreestandingVec<M, T> where M: core::panic::unwind_safe::RefUnwindSafe, T: core::panic::unwind_safe::RefUnwindSafe

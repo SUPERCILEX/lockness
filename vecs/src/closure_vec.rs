@@ -14,6 +14,10 @@ pub struct ClosureVec<F: FnOnce()> {
     data: FreestandingVec<Metadata, F>,
 }
 
+unsafe impl<T: FnOnce() + Send> Send for ClosureVec<T> {}
+
+unsafe impl<T: FnOnce() + Sync> Sync for ClosureVec<T> {}
+
 impl<F: FnOnce()> ClosureVec<F> {
     const INIT: Metadata = {
         unsafe fn call<F: FnOnce()>(f: NonNull<()>, just_drop: bool) {
