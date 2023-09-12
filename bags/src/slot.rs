@@ -16,7 +16,7 @@ use std::{
 use super::Allocated;
 
 #[must_use]
-pub fn mpsc<T: Allocated>() -> (Sender<T>, SoloReceiver<T>) {
+pub fn mpsc<T: Allocated>() -> (Sender<T>, Receiver<T>) {
     let inner = Arc::new(Inner {
         ptr: AtomicPtr::new(ptr::null_mut()),
         _marker: PhantomData,
@@ -26,7 +26,7 @@ pub fn mpsc<T: Allocated>() -> (Sender<T>, SoloReceiver<T>) {
         Sender {
             inner: inner.clone(),
         },
-        SoloReceiver { inner },
+        Receiver { inner },
     )
 }
 
@@ -34,7 +34,7 @@ pub struct Sender<T: Allocated> {
     inner: Arc<Inner<T>>,
 }
 
-pub struct SoloReceiver<T: Allocated> {
+pub struct Receiver<T: Allocated> {
     inner: Arc<Inner<T>>,
 }
 
@@ -115,7 +115,7 @@ impl<T: Allocated> Clone for Sender<T> {
     }
 }
 
-impl<T: Allocated> SoloReceiver<T> {
+impl<T: Allocated> Receiver<T> {
     #[must_use]
     pub fn try_recv(&self) -> Option<T> {
         self.recv_(None)
@@ -139,7 +139,7 @@ impl<T: Allocated> SoloReceiver<T> {
     fn recv_(&self, deadline: Option<Instant>) -> Option<T> {
         match Kind::from(self.inner.ptr.swap(ptr::null_mut(), Acquire)) {
             Kind::Null => {
-                if let Some(deadline) = deadline {
+                if let Some(_deadline) = deadline {
                     loop {
                         match Kind::from(self.inner.ptr.swap(Kind::SLEEP_SENTINEL, Acquire)) {
                             Kind::Null | Kind::Sleeping => todo!("sleep"),
@@ -147,6 +147,7 @@ impl<T: Allocated> SoloReceiver<T> {
                         }
                     }
                 } else {
+                    // rustix::thread::futex()
                     None
                 }
             }
@@ -166,7 +167,7 @@ mod tests {
     use std::thread;
 
     use super::*;
-    use crate::atomic_bag::test::Boxed;
+    use crate::test::Boxed;
 
     #[test]
     fn write() {

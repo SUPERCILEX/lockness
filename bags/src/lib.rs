@@ -1,3 +1,5 @@
+#![feature(strict_provenance)]
+
 use std::{
     ptr::NonNull,
     sync::{
@@ -11,9 +13,10 @@ use std::{
 };
 
 use receiver_impls::{MultipleReceiverImpl, SingleReceiverImpl};
+pub use slot::mpsc as mpsc_slot;
 use status::Block;
 
-pub mod slot;
+mod slot;
 
 pub trait Allocated {
     fn into_ptr(self) -> NonNull<()>;
@@ -141,7 +144,7 @@ mod receiver_impls {
     };
 
     use super::ReceiverImpl;
-    use crate::atomic_bag::status::Block;
+    use crate::status::Block;
 
     pub struct SingleReceiverImpl<const N: usize, T> {
         prev_ptrs: [*mut T; N],

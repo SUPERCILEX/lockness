@@ -11,7 +11,7 @@ use std::{
 use criterion::{
     criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, Criterion,
 };
-use lockness_core::atomic_bag::{slot::mpsc, Allocated};
+use lockness_bags::{mpsc_slot, Allocated};
 
 #[derive(Clone, Default)]
 struct Invalid;
@@ -131,7 +131,7 @@ fn single_threaded(c: &mut Criterion) {
     bench(
         &mut group,
         "atomic_bag",
-        mpsc,
+        mpsc_slot,
         |sender, v| sender.try_send(v),
         |receiver| receiver.try_recv(),
     );
@@ -375,7 +375,7 @@ fn mpsc_(group: &mut BenchmarkGroup<WallTime>, num_producers: usize) {
 
     group.bench_function("atomic_bag", |b| {
         b.iter_custom(|iters| {
-            let (sender, receiver) = mpsc();
+            let (sender, receiver) = mpsc_slot();
             bench(
                 num_producers,
                 iters,

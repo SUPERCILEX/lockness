@@ -1,0 +1,59 @@
+pub mod lockness_bags
+pub struct lockness_bags::Receiver<const N: usize, T, Internal: lockness_bags::ReceiverImpl<T>>
+impl<const N: usize, T: lockness_bags::Allocated, I: lockness_bags::ReceiverImpl<T>> lockness_bags::Receiver<N, T, I>
+pub fn lockness_bags::Receiver<N, T, I>::items(&self, timeout: core::time::Duration) -> impl core::iter::traits::iterator::Iterator<Item = T> + '_
+impl<const N: usize, T, Internal> core::marker::Send for lockness_bags::Receiver<N, T, Internal> where Internal: core::marker::Send
+impl<const N: usize, T, Internal> core::marker::Sync for lockness_bags::Receiver<N, T, Internal> where Internal: core::marker::Sync
+impl<const N: usize, T, Internal> core::marker::Unpin for lockness_bags::Receiver<N, T, Internal> where Internal: core::marker::Unpin
+impl<const N: usize, T, Internal> core::panic::unwind_safe::RefUnwindSafe for lockness_bags::Receiver<N, T, Internal> where Internal: core::panic::unwind_safe::RefUnwindSafe
+impl<const N: usize, T, Internal> core::panic::unwind_safe::UnwindSafe for lockness_bags::Receiver<N, T, Internal> where Internal: core::panic::unwind_safe::UnwindSafe
+impl<T, U> core::convert::Into<U> for lockness_bags::Receiver<N, T, Internal> where U: core::convert::From<T>
+pub fn lockness_bags::Receiver<N, T, Internal>::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for lockness_bags::Receiver<N, T, Internal> where U: core::convert::Into<T>
+pub type lockness_bags::Receiver<N, T, Internal>::Error = core::convert::Infallible
+pub fn lockness_bags::Receiver<N, T, Internal>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for lockness_bags::Receiver<N, T, Internal> where U: core::convert::TryFrom<T>
+pub type lockness_bags::Receiver<N, T, Internal>::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn lockness_bags::Receiver<N, T, Internal>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for lockness_bags::Receiver<N, T, Internal> where T: 'static + core::marker::Sized
+pub fn lockness_bags::Receiver<N, T, Internal>::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for lockness_bags::Receiver<N, T, Internal> where T: core::marker::Sized
+pub fn lockness_bags::Receiver<N, T, Internal>::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for lockness_bags::Receiver<N, T, Internal> where T: core::marker::Sized
+pub fn lockness_bags::Receiver<N, T, Internal>::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for lockness_bags::Receiver<N, T, Internal>
+pub fn lockness_bags::Receiver<N, T, Internal>::from(t: T) -> T
+pub struct lockness_bags::Sender<const N: usize, T, const IS_MULTIPLE_RECEIVER: bool>
+impl<const N: usize, T: lockness_bags::Allocated, const IS_MULTIPLE_RECEIVER: bool> lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER>
+pub fn lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER>::add(&self, value: T) -> core::option::Option<T>
+impl<const N: usize, T, const IS_MULTIPLE_RECEIVER: bool> core::marker::Send for lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER>
+impl<const N: usize, T, const IS_MULTIPLE_RECEIVER: bool> core::marker::Sync for lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER>
+impl<const N: usize, T, const IS_MULTIPLE_RECEIVER: bool> core::marker::Unpin for lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER>
+impl<const N: usize, T, const IS_MULTIPLE_RECEIVER: bool> core::panic::unwind_safe::RefUnwindSafe for lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER>
+impl<const N: usize, T, const IS_MULTIPLE_RECEIVER: bool> core::panic::unwind_safe::UnwindSafe for lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER>
+impl<T, U> core::convert::Into<U> for lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER> where U: core::convert::From<T>
+pub fn lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER>::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER> where U: core::convert::Into<T>
+pub type lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER>::Error = core::convert::Infallible
+pub fn lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER> where U: core::convert::TryFrom<T>
+pub type lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER>::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER> where T: 'static + core::marker::Sized
+pub fn lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER>::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER> where T: core::marker::Sized
+pub fn lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER>::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER> where T: core::marker::Sized
+pub fn lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER>::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER>
+pub fn lockness_bags::Sender<N, T, IS_MULTIPLE_RECEIVER>::from(t: T) -> T
+pub trait lockness_bags::Allocated
+pub unsafe fn lockness_bags::Allocated::from_ptr(ptr: core::ptr::non_null::NonNull<()>) -> Self
+pub fn lockness_bags::Allocated::into_ptr(self) -> core::ptr::non_null::NonNull<()>
+pub trait lockness_bags::ReceiverImpl<T>
+pub fn lockness_bags::ReceiverImpl::retrieve_ptr(&self, block: Block, status: &core::sync::atomic::AtomicUsize, bag: &[core::sync::atomic::AtomicPtr<T>]) -> core::option::Option<core::ptr::non_null::NonNull<T>>
+pub fn lockness_bags::mpmc<const N: usize, T: lockness_bags::Allocated + core::marker::Send + 'static>() -> (lockness_bags::Sender<N, T, bool>, lockness_bags::MultipleReceiver<N, T>)
+pub fn lockness_bags::mpsc<const N: usize, T: lockness_bags::Allocated + core::marker::Send + 'static>() -> (lockness_bags::Sender<N, T, bool>, lockness_bags::SingleReceiver<N, T>)
+pub fn lockness_bags::mpsc_slot<T: lockness_bags::Allocated>() -> (Sender<T>, Receiver<T>)
+pub type lockness_bags::MultipleReceiver<const N: usize, T> = lockness_bags::Receiver<N, T, receiver_impls::MultipleReceiverImpl>
+pub type lockness_bags::SingleReceiver<const N: usize, T> = lockness_bags::Receiver<N, T, receiver_impls::SingleReceiverImpl<N, T>>
