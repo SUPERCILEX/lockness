@@ -1,5 +1,5 @@
 [package]
-name = "lockness-core"
+name = "lockness-vecs"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -10,22 +10,11 @@ categories = ["concurrency", "asynchronous", "data-structures"]
 license.workspace = true
 
 [dev-dependencies]
-async-channel = "1.9.0"
-concurrent-queue = "2.2.0"
 criterion = "0.5.1"
-crossbeam-channel = "0.5.8"
-crossbeam-queue = "0.3.8"
-flume = "0.11.0"
-kanal = "0.1.0-pre8"
 proptest = "1.2.0"
-proptest-derive = "0.3.0"
-ringbuf = "0.3.3"
-thingbuf = "0.1.4"
+proptest-derive = "0.4.0"
+supercilex-tests = "0.3.4"
 
 [[bench]]
 name = "closure_vec"
-harness = false
-
-[[bench]]
-name = "atomic_bag"
 harness = false

@@ -4,7 +4,7 @@ use criterion::{
     criterion_group, criterion_main, measurement::Measurement, AxisScale, BatchSize,
     BenchmarkGroup, BenchmarkId, Criterion, PlotConfiguration, Throughput,
 };
-use lockness_core::closure_vec::ClosureVec;
+use lockness_vecs::ClosureVec;
 
 fn bench_all(group: &mut BenchmarkGroup<impl Measurement>, f: impl FnOnce() + Clone + 'static) {
     bench_create(group, f.clone());

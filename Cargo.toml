@@ -1,7 +1,8 @@
 [workspace]
 members = [
-    "core",
+    "bags",
     "scheduler",
+    "vecs",
 ]
 
 [workspace.package]
@@ -17,7 +18,7 @@ version = "0.0.0"
 publish = false
 
 [dev-dependencies]
-supercilex-tests = "0.3.3"
+supercilex-tests = "0.3.4"
 
 [profile.release]
 lto = true
