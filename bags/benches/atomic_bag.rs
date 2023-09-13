@@ -130,10 +130,10 @@ fn single_threaded(c: &mut Criterion) {
 
     bench(
         &mut group,
-        "atomic_bag",
+        "mpsc_slot",
         mpsc_slot,
-        |sender, v| sender.try_send(v),
-        |receiver| receiver.try_recv(),
+        |sender, v| sender.try_send(v).ok(),
+        |receiver| receiver.try_recv().ok(),
     );
 
     bench(
@@ -347,40 +347,37 @@ fn mpsc_(group: &mut BenchmarkGroup<WallTime>, num_producers: usize) {
         };
 
         thread::scope(|scope| {
-            let result = scope
-                .spawn(move || {
-                    let start = Instant::now();
+            let result = scope.spawn(move || {
+                let start = Instant::now();
 
-                    let mut received = 0;
-                    while received < iters * num_producers {
-                        if matches!(recv(), Some(Invalid)) {
-                            received += 1;
-                        }
+                let mut received = 0;
+                while received < iters * num_producers {
+                    if matches!(recv(), Some(Invalid)) {
+                        received += 1;
                     }
+                }
 
-                    start.elapsed()
-                })
-                .join()
-                .unwrap();
+                start.elapsed()
+            });
 
             (0..num_producers)
                 .map(|_| scope.spawn(generate.clone()))
                 .for_each(|t| t.join().unwrap());
 
-            result
+            result.join().unwrap()
         })
     }
 
     let num_producers = u64::try_from(num_producers).unwrap();
 
-    group.bench_function("atomic_bag", |b| {
+    group.bench_function("mpsc_slot", |b| {
         b.iter_custom(|iters| {
             let (sender, receiver) = mpsc_slot();
             bench(
                 num_producers,
                 iters,
-                move |v| sender.try_send(v),
-                move || receiver.try_recv(),
+                move |v| sender.try_send(v).ok(),
+                move || receiver.try_recv().ok(),
             )
         });
     });
