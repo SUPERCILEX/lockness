@@ -98,159 +98,236 @@ fn questions(c: &mut Criterion) {
     });
 }
 
-#[allow(clippy::too_many_lines)]
-fn single_threaded(c: &mut Criterion) {
-    fn bench<A, B>(
+trait MultiBencher {
+    fn bench<
+        Sender: Send + Clone,
+        Receiver: Send,
+        Name: AsRef<str>,
+        Create: FnMut() -> (Sender, Receiver),
+        Send_: FnMut(&mut Sender, Invalid) -> Option<Invalid> + Clone + Send,
+        Receive: FnMut(&mut Receiver) -> Option<Invalid> + Clone + Send,
+    >(
+        &self,
         group: &mut BenchmarkGroup<WallTime>,
-        name: &str,
-        mut create: impl FnMut() -> (A, B),
-        mut send: impl FnMut(&mut A, Invalid) -> Option<Invalid>,
-        mut recv: impl FnMut(&mut B) -> Option<Invalid>,
-    ) {
-        group.bench_function(format!("{name}/send"), |b| {
-            let (mut sender, _) = create();
-            b.iter(|| send(&mut sender, Invalid));
-        });
+        name: Name,
+        create: Create,
+        send: Send_,
+        recv: Receive,
+    );
+}
 
-        group.bench_function(format!("{name}/receive"), |b| {
-            let (_, mut receiver) = create();
-            b.iter(|| recv(&mut receiver));
-        });
+trait SingleBencher {
+    fn bench<
+        Sender,
+        Receiver,
+        Name: AsRef<str>,
+        Create: FnMut() -> (Sender, Receiver),
+        Send: FnMut(&mut Sender, Invalid) -> Option<Invalid>,
+        Receive: FnMut(&mut Receiver) -> Option<Invalid>,
+    >(
+        &self,
+        group: &mut BenchmarkGroup<WallTime>,
+        name: Name,
+        create: Create,
+        send: Send,
+        recv: Receive,
+    );
+}
 
-        group.bench_function(format!("{name}/send_receive"), |b| {
-            let (mut sender, mut receiver) = create();
-            b.iter(|| {
-                assert!(send(&mut sender, Invalid).is_none());
-                recv(&mut receiver)
-            });
-        });
-    }
-
-    let mut group = c.benchmark_group("single_threaded");
-
-    bench(
-        &mut group,
+#[allow(clippy::too_many_lines)]
+fn multi(group: &mut BenchmarkGroup<WallTime>, bencher: impl MultiBencher) {
+    bencher.bench(
+        group,
         "mpsc_slot",
         mpsc_slot,
         |sender, v| sender.try_send(v).ok(),
         |receiver| receiver.try_recv().ok(),
     );
 
-    bench(
-        &mut group,
-        "std",
-        || std::sync::mpsc::sync_channel(1),
-        |sender, v| {
-            sender.try_send(v).err().map(|e| match e {
-                TrySendError::Full(v) | TrySendError::Disconnected(v) => v,
-            })
-        },
-        |receiver| receiver.try_recv().ok(),
-    );
+    let mut parameterized = |capacity| {
+        bencher.bench(
+            group,
+            format!("std({capacity})"),
+            || std::sync::mpsc::sync_channel(capacity),
+            |sender, v| {
+                sender.try_send(v).err().map(|e| match e {
+                    TrySendError::Full(v) | TrySendError::Disconnected(v) => v,
+                })
+            },
+            |receiver| receiver.try_recv().ok(),
+        );
 
-    group.bench_function("crossbeam_queue/send", |b| {
-        let q = crossbeam_queue::ArrayQueue::new(1);
-        b.iter(|| q.push(Invalid));
-    });
+        {
+            let q = crossbeam_queue::ArrayQueue::new(capacity);
+            bencher.bench(
+                group,
+                format!("crossbeam_queue({capacity})"),
+                || (&q, &q),
+                |sender, v| sender.push(v).err(),
+                |receiver| receiver.pop(),
+            );
+        }
 
-    group.bench_function("crossbeam_queue/receive", |b| {
-        let q = crossbeam_queue::ArrayQueue::<Invalid>::new(1);
-        b.iter(|| q.pop());
-    });
+        bencher.bench(
+            group,
+            format!("crossbeam_channel({capacity})"),
+            || crossbeam_channel::bounded(capacity),
+            |sender, v| {
+                sender
+                    .try_send(v)
+                    .err()
+                    .map(crossbeam_channel::TrySendError::into_inner)
+            },
+            |receiver| receiver.try_recv().ok(),
+        );
 
-    group.bench_function("crossbeam_queue/send_receive", |b| {
-        let q = crossbeam_queue::ArrayQueue::new(1);
-        b.iter(|| {
-            q.push(Invalid).ok().unwrap();
-            q.pop()
-        });
-    });
+        bencher.bench(
+            group,
+            format!("flume({capacity})"),
+            || flume::bounded(capacity),
+            |sender, v| {
+                sender
+                    .try_send(v)
+                    .err()
+                    .map(flume::TrySendError::into_inner)
+            },
+            |receiver| receiver.try_recv().ok(),
+        );
 
-    bench(
-        &mut group,
-        "crossbeam_channel",
-        || crossbeam_channel::bounded(1),
-        |sender, v| {
-            sender
-                .try_send(v)
-                .err()
-                .map(crossbeam_channel::TrySendError::into_inner)
-        },
-        |receiver| receiver.try_recv().ok(),
-    );
+        bencher.bench(
+            group,
+            format!("kanal({capacity})"),
+            || kanal::bounded(capacity),
+            |sender, v| sender.try_send(v).err().map(|_| Invalid),
+            |receiver| receiver.try_recv().ok().flatten(),
+        );
 
-    bench(
-        &mut group,
-        "flume",
-        || flume::bounded(1),
-        |sender, v| {
-            sender
-                .try_send(v)
-                .err()
-                .map(flume::TrySendError::into_inner)
-        },
-        |receiver| receiver.try_recv().ok(),
-    );
+        bencher.bench(
+            group,
+            format!("thingbuf({capacity})"),
+            || thingbuf::mpsc::channel(capacity),
+            |sender, v| {
+                sender
+                    .try_send(v)
+                    .err()
+                    .map(thingbuf::mpsc::errors::TrySendError::into_inner)
+            },
+            |receiver| receiver.try_recv().ok(),
+        );
 
-    bench(
-        &mut group,
-        "kanal",
-        || kanal::bounded(1),
-        |sender, v| sender.try_send(v).err().map(|_| Invalid),
-        |receiver| receiver.try_recv().ok().flatten(),
-    );
+        bencher.bench(
+            group,
+            format!("async_channel({capacity})"),
+            || async_channel::bounded(capacity),
+            |sender, v| {
+                sender
+                    .try_send(v)
+                    .err()
+                    .map(async_channel::TrySendError::into_inner)
+            },
+            |receiver| receiver.try_recv().ok(),
+        );
 
-    bench(
-        &mut group,
-        "thingbuf",
-        || thingbuf::mpsc::channel(1),
-        |sender, v| {
-            sender
-                .try_send(v)
-                .err()
-                .map(thingbuf::mpsc::errors::TrySendError::into_inner)
-        },
-        |receiver| receiver.try_recv().ok(),
-    );
+        {
+            let q = concurrent_queue::ConcurrentQueue::bounded(capacity);
+            bencher.bench(
+                group,
+                format!("concurrent_queue({capacity})"),
+                || (&q, &q),
+                |sender, v| sender.push(v).err().map(|e| e.into_inner()),
+                |receiver| receiver.pop().ok(),
+            );
+        }
+    };
 
-    bench(
-        &mut group,
-        "async_channel",
-        || async_channel::bounded(1),
-        |sender, v| {
-            sender
-                .try_send(v)
-                .err()
-                .map(async_channel::TrySendError::into_inner)
-        },
-        |receiver| receiver.try_recv().ok(),
-    );
+    parameterized(1);
+    parameterized(32);
+}
 
-    group.bench_function("concurrent_queue/send", |b| {
-        let q = concurrent_queue::ConcurrentQueue::bounded(1);
-        b.iter(|| q.push(Invalid));
-    });
-
-    group.bench_function("concurrent_queue/receive", |b| {
-        let q = concurrent_queue::ConcurrentQueue::<Invalid>::bounded(1);
-        b.iter(|| q.pop());
-    });
-
-    group.bench_function("concurrent_queue/send_receive", |b| {
-        let q = concurrent_queue::ConcurrentQueue::bounded(1);
-        b.iter(|| {
-            q.push(Invalid).ok().unwrap();
-            q.pop()
-        });
-    });
-
-    bench(
-        &mut group,
-        "ringbuf",
+#[allow(clippy::too_many_lines)]
+fn single(group: &mut BenchmarkGroup<WallTime>, bencher: impl SingleBencher) {
+    bencher.bench(
+        group,
+        "ringbuf(1)",
         || ringbuf::StaticRb::<_, 1>::default().split(),
         |sender, v| sender.push(v).err(),
         ringbuf::Consumer::pop,
     );
+
+    bencher.bench(
+        group,
+        "ringbuf(32)",
+        || ringbuf::StaticRb::<_, 32>::default().split(),
+        |sender, v| sender.push(v).err(),
+        ringbuf::Consumer::pop,
+    );
+}
+
+fn single_threaded(c: &mut Criterion) {
+    struct Single;
+
+    impl MultiBencher for Single {
+        fn bench<
+            Sender,
+            Receiver,
+            Name: AsRef<str>,
+            Create: FnMut() -> (Sender, Receiver),
+            Send: FnMut(&mut Sender, Invalid) -> Option<Invalid>,
+            Receive: FnMut(&mut Receiver) -> Option<Invalid>,
+        >(
+            &self,
+            group: &mut BenchmarkGroup<WallTime>,
+            name: Name,
+            create: Create,
+            send: Send,
+            recv: Receive,
+        ) {
+            SingleBencher::bench(self, group, name, create, send, recv)
+        }
+    }
+
+    impl SingleBencher for Single {
+        fn bench<
+            Sender,
+            Receiver,
+            Name: AsRef<str>,
+            Create: FnMut() -> (Sender, Receiver),
+            Send: FnMut(&mut Sender, Invalid) -> Option<Invalid>,
+            Receive: FnMut(&mut Receiver) -> Option<Invalid>,
+        >(
+            &self,
+            group: &mut BenchmarkGroup<WallTime>,
+            name: Name,
+            mut create: Create,
+            mut send: Send,
+            mut recv: Receive,
+        ) {
+            let name = name.as_ref();
+
+            group.bench_function(format!("{name}/send"), |b| {
+                let (mut sender, _) = create();
+                b.iter(|| send(&mut sender, Invalid));
+            });
+
+            group.bench_function(format!("{name}/receive"), |b| {
+                let (_, mut receiver) = create();
+                b.iter(|| recv(&mut receiver));
+            });
+
+            group.bench_function(format!("{name}/send_receive"), |b| {
+                let (mut sender, mut receiver) = create();
+                b.iter(|| {
+                    assert!(send(&mut sender, Invalid).is_none());
+                    recv(&mut receiver)
+                });
+            });
+        }
+    }
+
+    let mut group = c.benchmark_group("single_threaded");
+
+    multi(&mut group, Single);
+    single(&mut group, Single);
 }
 
 fn multi_threaded(c: &mut Criterion) {
@@ -314,9 +391,17 @@ fn spsc_(group: &mut BenchmarkGroup<WallTime>) {
         })
     }
 
-    group.bench_function("ringbuf", |b| {
+    group.bench_function("ringbuf(1)", |b| {
         b.iter_custom(|iters| {
             let mut q = ringbuf::StaticRb::<_, 1>::default();
+            let (mut sender, mut receiver) = q.split_ref();
+            bench(iters, |v| sender.push(v).err(), || receiver.pop())
+        });
+    });
+
+    group.bench_function("ringbuf(32)", |b| {
+        b.iter_custom(|iters| {
+            let mut q = ringbuf::StaticRb::<_, 32>::default();
             let (mut sender, mut receiver) = q.split_ref();
             bench(iters, |v| sender.push(v).err(), || receiver.pop())
         });
@@ -368,134 +453,48 @@ fn mpsc_(group: &mut BenchmarkGroup<WallTime>, num_producers: usize) {
         })
     }
 
-    let num_producers = u64::try_from(num_producers).unwrap();
+    struct Multi {
+        num_producers: u64,
+    }
 
-    group.bench_function("mpsc_slot", |b| {
-        b.iter_custom(|iters| {
-            let (sender, receiver) = mpsc_slot();
-            bench(
-                num_producers,
-                iters,
-                move |v| sender.try_send(v).ok(),
-                move || receiver.try_recv().ok(),
-            )
-        });
-    });
+    impl MultiBencher for Multi {
+        fn bench<
+            Sender: Send + Clone,
+            Receiver: Send,
+            Name: AsRef<str>,
+            Create: FnMut() -> (Sender, Receiver),
+            Send_: FnMut(&mut Sender, Invalid) -> Option<Invalid> + Clone + Send,
+            Receive: FnMut(&mut Receiver) -> Option<Invalid> + Clone + Send,
+        >(
+            &self,
+            group: &mut BenchmarkGroup<WallTime>,
+            name: Name,
+            mut create: Create,
+            send: Send_,
+            recv: Receive,
+        ) {
+            group.bench_function(name.as_ref(), |b| {
+                b.iter_custom(|iters| {
+                    let mut send = send.clone();
+                    let mut recv = recv.clone();
+                    let (mut sender, mut receiver) = create();
+                    bench(
+                        self.num_producers,
+                        iters,
+                        move |v| send(&mut sender, v),
+                        move || recv(&mut receiver),
+                    )
+                });
+            });
+        }
+    }
 
-    group.bench_function("std", |b| {
-        b.iter_custom(|iters| {
-            let (sender, receiver) = std::sync::mpsc::sync_channel(1);
-            bench(
-                num_producers,
-                iters,
-                move |v| {
-                    sender.try_send(v).err().map(|e| match e {
-                        TrySendError::Full(v) | TrySendError::Disconnected(v) => v,
-                    })
-                },
-                move || receiver.try_recv().ok(),
-            )
-        });
-    });
-
-    group.bench_function("crossbeam_queue", |b| {
-        b.iter_custom(|iters| {
-            let q = crossbeam_queue::ArrayQueue::new(1);
-            bench(num_producers, iters, |v| q.push(v).err(), || q.pop())
-        });
-    });
-
-    group.bench_function("crossbeam_channel", |b| {
-        b.iter_custom(|iters| {
-            let (sender, receiver) = crossbeam_channel::bounded(1);
-            bench(
-                num_producers,
-                iters,
-                move |v| {
-                    sender
-                        .try_send(v)
-                        .err()
-                        .map(crossbeam_channel::TrySendError::into_inner)
-                },
-                move || receiver.try_recv().ok(),
-            )
-        });
-    });
-
-    group.bench_function("flume", |b| {
-        b.iter_custom(|iters| {
-            let (sender, receiver) = flume::bounded(1);
-            bench(
-                num_producers,
-                iters,
-                move |v| {
-                    sender
-                        .try_send(v)
-                        .err()
-                        .map(flume::TrySendError::into_inner)
-                },
-                move || receiver.try_recv().ok(),
-            )
-        });
-    });
-
-    group.bench_function("kanal", |b| {
-        b.iter_custom(|iters| {
-            let (sender, receiver) = kanal::bounded(1);
-            bench(
-                num_producers,
-                iters,
-                move |v| sender.send(v).err().map(|_| Invalid),
-                move || receiver.try_recv().ok().flatten(),
-            )
-        });
-    });
-
-    group.bench_function("thingbuf", |b| {
-        b.iter_custom(|iters| {
-            let (sender, receiver) = thingbuf::mpsc::channel(1);
-            bench(
-                num_producers,
-                iters,
-                move |v| {
-                    sender
-                        .try_send(v)
-                        .err()
-                        .map(thingbuf::mpsc::errors::TrySendError::into_inner)
-                },
-                move || receiver.try_recv().ok(),
-            )
-        });
-    });
-
-    group.bench_function("async_channel", |b| {
-        b.iter_custom(|iters| {
-            let (sender, receiver) = async_channel::bounded(1);
-            bench(
-                num_producers,
-                iters,
-                move |v| {
-                    sender
-                        .try_send(v)
-                        .err()
-                        .map(async_channel::TrySendError::into_inner)
-                },
-                move || receiver.try_recv().ok(),
-            )
-        });
-    });
-
-    group.bench_function("concurrent_queue", |b| {
-        b.iter_custom(|iters| {
-            let q = concurrent_queue::ConcurrentQueue::bounded(1);
-            bench(
-                num_producers,
-                iters,
-                |v| q.push(v).err().map(concurrent_queue::PushError::into_inner),
-                || q.pop().ok(),
-            )
-        });
-    });
+    multi(
+        group,
+        Multi {
+            num_producers: u64::try_from(num_producers).unwrap(),
+        },
+    );
 }
 
 criterion_group! {

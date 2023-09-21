@@ -560,6 +560,7 @@ dependencies = [
  "concurrent-queue",
  "criterion",
  "crossbeam-channel",
+ "crossbeam-deque",
  "crossbeam-queue",
  "flume",
  "kanal",
