@@ -40,9 +40,10 @@ pub struct Receiver<T: Allocated> {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum Error {
+pub enum Outcome<T> {
+    Ok(T),
     Empty,
-    Dead,
+    Dead(Option<T>),
 }
 
 /// Using the lower 32-bits of a pointer to sleep is totally broken if said
@@ -155,24 +156,36 @@ impl<T: Allocated, F: FnOnce()> From<(*mut T, F)> for Kind<T> {
 }
 
 impl<T: Allocated> Sender<T> {
-    pub fn try_send(&self, value: T) -> Result<T, Error> {
+    pub fn try_send(&self, value: T) -> Outcome<T> {
         match Kind::from((
             self.inner
                 .ptr
                 .swap(value.into_ptr().cast().as_ptr(), Release),
             || fence(Acquire),
         )) {
-            Kind::Null => Err(Error::Empty),
-            Kind::Dead => Err(Error::Dead),
+            Kind::Null => Outcome::Empty,
+            Kind::Dead => {
+                // The undo sucks quite a bit on the sender side: you can get tearing where a
+                // sender will not realize that the receiver is dead.
+                match Kind::from((self.inner.ptr.swap(Kind::DEAD_SENTINEL, Relaxed), || {
+                    fence(Acquire);
+                })) {
+                    Kind::Null | Kind::Sleeping | Kind::Dead => unsafe {
+                        std::hint::unreachable_unchecked()
+                    },
+                    Kind::Value(value) => Outcome::Dead(Some(value)),
+                }
+            }
             Kind::Sleeping => {
                 atomic_wake(evil_sleep_cast(&self.inner.ptr));
-                Err(Error::Empty)
+                Outcome::Empty
             }
-            Kind::Value(value) => Ok(value),
+            Kind::Value(value) => Outcome::Ok(value),
         }
     }
 
-    #[must_use] pub fn shutdown(self) -> Option<T> {
+    #[must_use]
+    pub fn shutdown(self) -> Option<T> {
         let mut me = ManuallyDrop::new(self);
         let inner = unsafe { ptr::from_mut(&mut me.inner).read() };
 
@@ -195,43 +208,78 @@ impl<T: Allocated> Drop for Sender<T> {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+enum Wait {
+    Never,
+    Forever,
+    Deadline(Instant),
+}
+
 impl<T: Allocated> Receiver<T> {
-    pub fn try_recv(&self) -> Result<T, Error> {
-        self.recv_(None)
+    #[must_use]
+    pub fn try_recv(&self) -> Outcome<T> {
+        self.recv_(Wait::Never)
     }
 
-    pub fn recv(&self) -> Result<T, Error> {
-        self.recv_timeout(Duration::MAX)
+    #[must_use]
+    pub fn recv(&self) -> Outcome<T> {
+        self.recv_(Wait::Forever)
     }
 
-    pub fn recv_timeout(&self, timeout: Duration) -> Result<T, Error> {
-        self.recv_(Instant::now().checked_add(timeout))
+    #[must_use]
+    pub fn recv_timeout(&self, timeout: Duration) -> Outcome<T> {
+        self.recv_(
+            Instant::now()
+                .checked_add(timeout)
+                .map_or(Wait::Forever, Wait::Deadline),
+        )
     }
 
-    pub fn recv_deadline(&self, deadline: Instant) -> Result<T, Error> {
-        self.recv_(Some(deadline))
+    #[must_use]
+    pub fn recv_deadline(&self, deadline: Instant) -> Outcome<T> {
+        self.recv_(Wait::Deadline(deadline))
     }
 
-    fn recv_(&self, deadline: Option<Instant>) -> Result<T, Error> {
+    fn recv_(&self, wait: Wait) -> Outcome<T> {
         match Kind::from(self.inner.ptr.swap(ptr::null_mut(), Acquire)) {
-            Kind::Null => deadline.ok_or(Error::Empty).and_then(|deadline| {
-                match Kind::from(self.inner.ptr.swap(Kind::SLEEP_SENTINEL, Acquire)) {
-                    Kind::Null => {
-                        atomic_wait(evil_sleep_cast(&self.inner.ptr), 0, deadline);
-                        Err(Error::Empty)
+            Kind::Null => {
+                if matches!(wait, Wait::Never) {
+                    Outcome::Empty
+                } else {
+                    match Kind::from(self.inner.ptr.swap(Kind::SLEEP_SENTINEL, Acquire)) {
+                        Kind::Null => {
+                            #[allow(clippy::cast_possible_truncation)]
+                            atomic_wait(
+                                evil_sleep_cast(&self.inner.ptr),
+                                Kind::<T>::SLEEP_SENTINEL.addr() as u32,
+                                match wait {
+                                    Wait::Never => unsafe { std::hint::unreachable_unchecked() },
+                                    Wait::Forever => None,
+                                    Wait::Deadline(deadline) => Some(deadline),
+                                },
+                            );
+                            Outcome::Empty
+                        }
+                        Kind::Dead => {
+                            self.inner.ptr.swap(Kind::DEAD_SENTINEL, Relaxed);
+                            Outcome::Dead(None)
+                        }
+                        Kind::Sleeping => unsafe { std::hint::unreachable_unchecked() },
+                        Kind::Value(value) => Outcome::Ok(value),
                     }
-                    Kind::Dead => Err(Error::Dead),
-                    Kind::Sleeping => unsafe { std::hint::unreachable_unchecked() },
-                    Kind::Value(value) => Ok(value),
                 }
-            }),
-            Kind::Dead => Err(Error::Dead),
+            }
+            Kind::Dead => {
+                self.inner.ptr.swap(Kind::DEAD_SENTINEL, Relaxed);
+                Outcome::Dead(None)
+            }
             Kind::Sleeping => unsafe { std::hint::unreachable_unchecked() },
-            Kind::Value(value) => Ok(value),
+            Kind::Value(value) => Outcome::Ok(value),
         }
     }
 
-    #[must_use] pub fn shutdown(self) -> Option<T> {
+    #[must_use]
+    pub fn shutdown(self) -> Option<T> {
         let mut me = ManuallyDrop::new(self);
         let inner = unsafe { ptr::from_mut(&mut me.inner).read() };
 
@@ -254,19 +302,41 @@ mod tests {
 
     #[test]
     fn write() {
+        let (sender, _receiver) = mpsc();
+
+        assert_eq!(Outcome::Empty, sender.try_send(Boxed::new(0)));
+        for i in 1..10 {
+            assert_eq!(
+                Outcome::Ok(Boxed::new(i - 1)),
+                sender.try_send(Boxed::new(i))
+            );
+        }
+    }
+
+    #[test]
+    fn write_dead() {
         let (sender, _) = mpsc();
 
-        assert_eq!(Err(Error::Dead), sender.try_send(Boxed::new(0)));
-        for i in 1..10 {
-            assert_eq!(Ok(Boxed::new(i - 1)), sender.try_send(Boxed::new(i)));
+        for i in 0..10 {
+            assert_eq!(
+                Outcome::Dead(Some(Boxed::new(i))),
+                sender.try_send(Boxed::new(i))
+            );
         }
     }
 
     #[test]
     fn read() {
+        let (_sender, receiver) = mpsc::<Boxed>();
+
+        assert_eq!(Outcome::Empty, receiver.try_recv());
+    }
+
+    #[test]
+    fn read_dead() {
         let (_, receiver) = mpsc::<Boxed>();
 
-        assert_eq!(Err(Error::Dead), receiver.try_recv());
+        assert_eq!(Outcome::Dead(None), receiver.try_recv());
     }
 
     #[test]
@@ -274,8 +344,8 @@ mod tests {
         let (sender, receiver) = mpsc();
 
         for i in 0..10 {
-            assert_eq!(Err(Error::Empty), sender.try_send(Boxed::new(i)));
-            assert_eq!(Ok(Boxed::new(i)), receiver.try_recv());
+            assert_eq!(Outcome::Empty, sender.try_send(Boxed::new(i)));
+            assert_eq!(Outcome::Ok(Boxed::new(i)), receiver.try_recv());
         }
     }
 
@@ -290,10 +360,22 @@ mod tests {
             let mut i = 0;
             loop {
                 holding_cell = if let Some(v) = holding_cell {
-                    sender.try_send(v).ok()
+                    match sender.try_send(v) {
+                        Outcome::Ok(value) => Some(value),
+                        Outcome::Empty => None,
+                        Outcome::Dead(_) => {
+                            unreachable!()
+                        }
+                    }
                 } else if i < ITERS {
                     i += 1;
-                    sender.try_send(Boxed::new(i - 1)).ok()
+                    match sender.try_send(Boxed::new(i - 1)) {
+                        Outcome::Ok(value) => Some(value),
+                        Outcome::Empty => None,
+                        Outcome::Dead(_) => {
+                            unreachable!()
+                        }
+                    }
                 } else {
                     break;
                 };
@@ -310,17 +392,47 @@ mod tests {
 
             let mut i = 0;
             while i < ITERS * 2 {
-                if let Ok(v) = receiver.try_recv() {
-                    total = total.checked_sub(*v).unwrap();
-                    i += 1;
+                match receiver.try_recv() {
+                    Outcome::Ok(v) => {
+                        total = total.checked_sub(*v).unwrap();
+                        i += 1;
+                    }
+                    Outcome::Dead(_) => {
+                        if i == ITERS * 2 - 1 {
+                            // Close enough, the producer handled the last value
+                            break;
+                        }
+                    }
+                    Outcome::Empty => {}
                 }
             }
 
-            assert_eq!(0, total);
+            assert!(total < ITERS);
         })
         .join()
         .unwrap();
         producer1.join().unwrap();
         producer2.join().unwrap();
+    }
+
+    #[test]
+    #[allow(clippy::similar_names)]
+    #[cfg(not(miri))] // Fails presumably because we sleep on half a word
+    fn sleep_test() {
+        let (sender, receiver) = mpsc();
+        let _keep_alive = sender.clone();
+
+        let received = thread::spawn(move || {
+            assert_eq!(Outcome::Empty, receiver.recv());
+            receiver.recv()
+        });
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(10));
+            assert_eq!(Outcome::Empty, sender.try_send(Boxed::new(42)));
+        })
+        .join()
+        .unwrap();
+
+        assert_eq!(Outcome::Ok(Boxed::new(42)), received.join().unwrap());
     }
 }

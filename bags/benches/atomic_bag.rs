@@ -1,3 +1,5 @@
+#![allow(clippy::needless_pass_by_value)]
+
 use std::{
     ptr::NonNull,
     sync::{
@@ -11,7 +13,7 @@ use std::{
 use criterion::{
     criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, Criterion,
 };
-use lockness_bags::{mpsc_slot, Allocated};
+use lockness_bags::{mpsc_slot, Allocated, SlotOutcome};
 
 #[derive(Clone, Default)]
 struct Invalid;
@@ -140,8 +142,14 @@ fn multi(group: &mut BenchmarkGroup<WallTime>, bencher: impl MultiBencher) {
         group,
         "mpsc_slot",
         mpsc_slot,
-        |sender, v| sender.try_send(v).ok(),
-        |receiver| receiver.try_recv().ok(),
+        |sender, v| match sender.try_send(v) {
+            SlotOutcome::Ok(value) => Some(value),
+            SlotOutcome::Empty | SlotOutcome::Dead(_) => None,
+        },
+        |receiver| match receiver.try_recv() {
+            SlotOutcome::Ok(value) => Some(value),
+            SlotOutcome::Empty | SlotOutcome::Dead(_) => None,
+        },
     );
 
     let mut parameterized = |capacity| {
@@ -234,7 +242,12 @@ fn multi(group: &mut BenchmarkGroup<WallTime>, bencher: impl MultiBencher) {
                 group,
                 format!("concurrent_queue({capacity})"),
                 || (&q, &q),
-                |sender, v| sender.push(v).err().map(|e| e.into_inner()),
+                |sender, v| {
+                    sender
+                        .push(v)
+                        .err()
+                        .map(concurrent_queue::PushError::into_inner)
+                },
                 |receiver| receiver.pop().ok(),
             );
         }
@@ -282,7 +295,7 @@ fn single_threaded(c: &mut Criterion) {
             send: Send,
             recv: Receive,
         ) {
-            SingleBencher::bench(self, group, name, create, send, recv)
+            SingleBencher::bench(self, group, name, create, send, recv);
         }
     }
 

@@ -6,7 +6,9 @@
 use std::{mem, ptr, ptr::NonNull, sync::atomic::AtomicU32, time::Instant};
 
 use rustix::thread::{futex, FutexFlags, FutexOperation, Timespec};
-pub use slot::{mpsc as mpsc_slot, Receiver as SlotReceiver, Sender as SlotSender};
+pub use slot::{
+    mpsc as mpsc_slot, Outcome as SlotOutcome, Receiver as SlotReceiver, Sender as SlotSender,
+};
 
 mod bags;
 mod slot;
@@ -31,23 +33,39 @@ fn atomic_wake(a: &AtomicU32) {
     }
 }
 
-fn atomic_wait(a: &AtomicU32, expected: u32, deadline: Instant) {
-    let timeout = deadline.saturating_duration_since(unsafe { mem::zeroed() });
-    let deadline = Timespec {
-        #[allow(clippy::cast_possible_wrap)]
-        tv_sec: timeout.as_secs() as _,
-        tv_nsec: timeout.subsec_nanos().into(),
-    };
-    unsafe {
-        let _ = futex(
-            a.as_ptr(),
-            FutexOperation::WaitBitset,
-            FutexFlags::PRIVATE,
-            expected,
-            &deadline,
-            ptr::null_mut(),
-            u32::MAX,
-        );
+fn atomic_wait(a: &AtomicU32, expected: u32, deadline: Option<Instant>) {
+    #[allow(clippy::option_if_let_else)]
+    match deadline {
+        None => unsafe {
+            let _ = futex(
+                a.as_ptr(),
+                FutexOperation::Wait,
+                FutexFlags::PRIVATE,
+                expected,
+                ptr::null(),
+                ptr::null_mut(),
+                0,
+            );
+        },
+        Some(deadline) => {
+            let timeout = deadline.saturating_duration_since(unsafe { mem::zeroed() });
+            #[allow(clippy::cast_possible_wrap)]
+            let deadline = Timespec {
+                tv_sec: timeout.as_secs() as _,
+                tv_nsec: timeout.subsec_nanos().into(),
+            };
+            unsafe {
+                let _ = futex(
+                    a.as_ptr(),
+                    FutexOperation::WaitBitset,
+                    FutexFlags::PRIVATE,
+                    expected,
+                    &deadline,
+                    ptr::null_mut(),
+                    u32::MAX,
+                );
+            }
+        }
     }
 }
 
