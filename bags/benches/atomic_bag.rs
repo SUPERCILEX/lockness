@@ -204,17 +204,6 @@ fn multi(group: &mut BenchmarkGroup<WallTime>, bencher: impl MultiBencher) {
 
         bencher.bench(
             group,
-            format!("kanal({capacity})"),
-            || kanal::bounded(capacity),
-            |sender, v| match sender.try_send(v) {
-                Ok(true) => None,
-                Ok(false) | Err(_) => Some(Invalid),
-            },
-            |receiver| receiver.try_recv().ok().flatten(),
-        );
-
-        bencher.bench(
-            group,
             format!("thingbuf({capacity})"),
             || thingbuf::mpsc::channel(capacity),
             |sender, v| {
