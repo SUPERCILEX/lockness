@@ -206,7 +206,10 @@ fn multi(group: &mut BenchmarkGroup<WallTime>, bencher: impl MultiBencher) {
             group,
             format!("kanal({capacity})"),
             || kanal::bounded(capacity),
-            |sender, v| sender.try_send(v).err().map(|_| Invalid),
+            |sender, v| match sender.try_send(v) {
+                Ok(true) => None,
+                Ok(false) | Err(_) => Some(Invalid),
+            },
             |receiver| receiver.try_recv().ok().flatten(),
         );
 
