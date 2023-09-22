@@ -321,12 +321,12 @@ fn single_threaded(c: &mut Criterion) {
             let name = name.as_ref();
 
             group.bench_function(format!("{name}/send"), |b| {
-                let (mut sender, _) = create();
+                let (mut sender, _receiver) = create();
                 b.iter(|| send(&mut sender, Invalid));
             });
 
             group.bench_function(format!("{name}/receive"), |b| {
-                let (_, mut receiver) = create();
+                let (_sender, mut receiver) = create();
                 b.iter(|| recv(&mut receiver));
             });
 
