@@ -261,7 +261,7 @@ impl<T: Allocated> Receiver<T> {
                             Outcome::Empty
                         }
                         Kind::Dead => {
-                            self.inner.ptr.swap(Kind::DEAD_SENTINEL, Relaxed);
+                            self.inner.ptr.store(Kind::DEAD_SENTINEL, Relaxed);
                             Outcome::Dead(None)
                         }
                         Kind::Sleeping => unsafe { std::hint::unreachable_unchecked() },
@@ -270,7 +270,7 @@ impl<T: Allocated> Receiver<T> {
                 }
             }
             Kind::Dead => {
-                self.inner.ptr.swap(Kind::DEAD_SENTINEL, Relaxed);
+                self.inner.ptr.store(Kind::DEAD_SENTINEL, Relaxed);
                 Outcome::Dead(None)
             }
             Kind::Sleeping => unsafe { std::hint::unreachable_unchecked() },
