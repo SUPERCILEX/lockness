@@ -11,9 +11,9 @@ license.workspace = true
 
 [dev-dependencies]
 criterion = "0.5.1"
-proptest = "1.2.0"
+proptest = "1.4.0"
 proptest-derive = "0.4.0"
-supercilex-tests = "0.3.4"
+supercilex-tests = "0.4.4"
 
 [[bench]]
 name = "closure_vec"

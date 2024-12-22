@@ -81,6 +81,7 @@ pub struct RuntimeContext {
 //
 //     use crate::runtime::ThreadContext;
 //
+// TODO use const thread_local
 //     thread_local! {
 //         static CONTEXT: Cell<ThreadContext> = panic!("Not in the lockness
 // runtime");     }

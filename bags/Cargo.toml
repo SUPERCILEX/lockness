@@ -10,18 +10,18 @@ categories = ["concurrency", "asynchronous", "data-structures"]
 license.workspace = true
 
 [dependencies]
-rustix = { version = "0.38.13", features = ["thread", "linux_latest"] }
+rustix = { version = "0.38.28", features = ["thread", "linux_latest"] }
 
 [dev-dependencies]
-async-channel = "1.9.0"
-concurrent-queue = "2.2.0"
+async-channel = "2.1.1"
+concurrent-queue = "2.4.0"
 criterion = "0.5.1"
 crossbeam-channel = "0.5.8"
 crossbeam-deque = "0.8.3"
 crossbeam-queue = "0.3.8"
 flume = "0.11.0"
 ringbuf = "0.3.3"
-supercilex-tests = "0.3.4"
+supercilex-tests = "0.4.4"
 thingbuf = "0.1.4"
 
 [[bench]]

@@ -265,7 +265,13 @@ impl<T: Allocated> Receiver<T> {
                             Outcome::Dead(None)
                         }
                         Kind::Sleeping => unsafe { std::hint::unreachable_unchecked() },
-                        Kind::Value(value) => Outcome::Ok(value),
+                        Kind::Value(value) => {
+                            // This sucks because the sleep sentinel is left in place, meaning the
+                            // next producer write will make a wake syscall. We could swap back in
+                            // NULL, but then the API has to change to return an iterator of values
+                            // since a new value could have been written in the meantime.
+                            Outcome::Ok(value)
+                        }
                     }
                 }
             }

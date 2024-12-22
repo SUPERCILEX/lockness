@@ -7,7 +7,7 @@ use std::{
 use crate::freestanding_vec::FreestandingVec;
 
 struct Metadata {
-    task_fn: NonNull<()>,
+    task_fn: unsafe fn(NonNull<()>, bool),
 }
 
 pub struct ClosureVec<F: FnOnce()> {
@@ -28,9 +28,7 @@ impl<F: FnOnce()> ClosureVec<F> {
             }
         }
 
-        Metadata {
-            task_fn: unsafe { NonNull::new_unchecked(call::<F> as *mut ()) },
-        }
+        Metadata { task_fn: call::<F> }
     };
 
     #[must_use]
@@ -72,11 +70,8 @@ impl<F: FnOnce()> ClosureVec<F> {
 
     fn _pop_and_run(&mut self, just_drop: bool) -> bool {
         self.data
-            .pop(|&mut Metadata { task_fn }, captures| {
-                let task = unsafe { transmute::<_, unsafe fn(NonNull<()>, bool)>(task_fn) };
-                unsafe {
-                    task(captures.cast(), just_drop);
-                }
+            .pop(|&mut Metadata { task_fn }, captures| unsafe {
+                task_fn(captures.cast(), just_drop);
             })
             .is_none()
     }
