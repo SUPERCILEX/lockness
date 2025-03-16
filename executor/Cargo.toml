@@ -1,11 +1,11 @@
 [package]
-name = "lockness-scheduler"
+name = "lockness-executor"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
 description = "TODO"
 repository.workspace = true
-keywords = ["scheduler", "blocking", "thread", "parallel", "performance"]
+keywords = ["executor", "blocking", "thread", "parallel", "performance"]
 categories = ["concurrency", "asynchronous", "data-structures"]
 license.workspace = true
 
@@ -13,5 +13,5 @@ license.workspace = true
 criterion = "0.5.1"
 flume = "0.11.0"
 rayon = "1.8.0"
-supercilex-tests = "0.4.4"
+supercilex-tests = { version = "0.4.13", default-features = false, features = ["api"] }
 tokio = "1.35.0"

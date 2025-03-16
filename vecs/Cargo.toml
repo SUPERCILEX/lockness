@@ -13,7 +13,7 @@ license.workspace = true
 criterion = "0.5.1"
 proptest = "1.4.0"
 proptest-derive = "0.4.0"
-supercilex-tests = "0.4.4"
+supercilex-tests = { version = "0.4.13", default-features = false, features = ["api"] }
 
 [[bench]]
 name = "closure_vec"

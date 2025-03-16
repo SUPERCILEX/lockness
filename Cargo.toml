@@ -1,24 +1,25 @@
 [workspace]
 members = [
     "bags",
-    "scheduler",
+    "executor",
     "vecs",
 ]
 
 [workspace.package]
 version = "0.0.1"
 authors = ["Alex Saveau <saveau.alexandre@gmail.com>"]
-edition = "2021"
+edition = "2024"
 repository = "https://github.com/SUPERCILEX/lockness"
 license = "Apache-2.0"
 
 [package]
 name = "lint"
 version = "0.0.0"
+edition.workspace = true
 publish = false
 
 [dev-dependencies]
-supercilex-tests = "0.4.4"
+supercilex-tests = { version = "0.4.13", default-features = false }
 
 [profile.release]
 lto = true
@@ -29,4 +30,5 @@ panic = "abort"
 [profile.dr]
 inherits = "release"
 debug = true
+debug-assertions = true
 strip = false
