@@ -11,23 +11,9 @@ use std::{
 };
 
 use criterion::{
-    criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, Criterion,
+    BenchmarkGroup, Criterion, criterion_group, criterion_main, measurement::WallTime,
 };
-use lockness_bags::{mpsc_slot, Allocated, SlotOutcome};
-
-#[derive(Clone, Default)]
-struct Invalid;
-
-impl Allocated for Invalid {
-    fn into_ptr(self) -> NonNull<()> {
-        NonNull::dangling()
-    }
-
-    unsafe fn from_ptr(ptr: NonNull<()>) -> Self {
-        std::hint::black_box(ptr);
-        Self
-    }
-}
+use lockness_bags::mpsc_slot;
 
 fn questions(c: &mut Criterion) {
     let mut group = c.benchmark_group("questions");
@@ -494,12 +480,9 @@ fn mpsc_(group: &mut BenchmarkGroup<WallTime>, num_producers: usize) {
         }
     }
 
-    multi(
-        group,
-        Multi {
-            num_producers: u64::try_from(num_producers).unwrap(),
-        },
-    );
+    multi(group, Multi {
+        num_producers: u64::try_from(num_producers).unwrap(),
+    });
 }
 
 criterion_group! {

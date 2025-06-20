@@ -1,8 +1,8 @@
 use std::{mem, time::Duration};
 
 use criterion::{
-    criterion_group, criterion_main, measurement::Measurement, AxisScale, BatchSize,
-    BenchmarkGroup, BenchmarkId, Criterion, PlotConfiguration, Throughput,
+    AxisScale, BatchSize, BenchmarkGroup, BenchmarkId, Criterion, PlotConfiguration, Throughput,
+    criterion_group, criterion_main, measurement::Measurement,
 };
 use lockness_vecs::ClosureVec;
 

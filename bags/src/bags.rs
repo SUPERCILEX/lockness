@@ -1,11 +1,11 @@
 use std::{
     ptr::NonNull,
     sync::{
+        Arc,
         atomic::{
             AtomicPtr, AtomicUsize,
             Ordering::{Relaxed, Release},
         },
-        Arc,
     },
     time::Duration,
 };
@@ -13,21 +13,17 @@ use std::{
 use receiver_impls::{MultipleReceiverImpl, SingleReceiverImpl};
 use status::Block;
 
-use crate::Allocated;
-
 pub type SingleReceiver<const N: usize, T> = Receiver<N, T, SingleReceiverImpl<N, T>>;
 
 #[must_use]
-pub fn mpsc<const N: usize, T: Allocated + Send + 'static>()
--> (Sender<N, T, false>, SingleReceiver<N, T>) {
+pub fn mpsc<const N: usize, T: Send + 'static>() -> (Sender<N, T, false>, SingleReceiver<N, T>) {
     todo!()
 }
 
 pub type MultipleReceiver<const N: usize, T> = Receiver<N, T, MultipleReceiverImpl>;
 
 #[must_use]
-pub fn mpmc<const N: usize, T: Allocated + Send + 'static>()
--> (Sender<N, T, true>, MultipleReceiver<N, T>) {
+pub fn mpmc<const N: usize, T: Send + 'static>() -> (Sender<N, T, true>, MultipleReceiver<N, T>) {
     todo!()
 }
 
@@ -45,10 +41,14 @@ struct Inner<const N: usize, T> {
     bag: [AtomicPtr<T>; N],
 }
 
-impl<const N: usize, T: Allocated, const IS_MULTIPLE_RECEIVER: bool>
-    Sender<N, T, IS_MULTIPLE_RECEIVER>
-{
-    const _VALIDATE: () = assert!(N < usize::BITS as usize);
+impl<const N: usize, T, const IS_MULTIPLE_RECEIVER: bool> Sender<N, T, IS_MULTIPLE_RECEIVER> {
+    const _VALIDATE: () = {
+        assert!(
+            N < usize::BITS as usize,
+            "Internal size limit reached. Consider using a BufferedSender."
+        );
+        assert!(N > 1, "Use a ::mpsc_slot instead.");
+    };
 
     pub fn add(&self, value: T) -> Option<T> {
         let Inner { status, bag } = &*self.inner;
@@ -63,30 +63,31 @@ impl<const N: usize, T: Allocated, const IS_MULTIPLE_RECEIVER: bool>
             return Some(value);
         }
 
-        if IS_MULTIPLE_RECEIVER {
-            if !bag[index]
-                .swap(value.into_ptr().as_ptr().cast(), Release)
-                .is_null()
-            {
-                // Protocol:
-                // - The receiver always swaps read ptrs with 0.
-                // - A set bit in the status implies eventual consistency in the atomic ptr
-                //   (i.e. a value will be present).
-                // - If the receiver swap/load returns zero, we are between the bit set
-                //   instruction and the sender store/swap.
-                // - Thus, the receiver swaps a non-zero value into the ptr.
-                // - If the sender already performed its store, then the swap will return a
-                //   non-zero value and the receiver will undo its swap.
-                // - Otherwise, the receiver will still get a zero and will go to sleep.
-                // - Thus, if we see a non-zero value we must wake the receiver up.
-
-                // TODO it's also possible to accidentally steal a value (because the receiver
-                //  must zero their bit before taking the ptr) so check for specific value
-                todo!("wake")
-            }
-        } else {
-            bag[index].store(value.into_ptr().as_ptr().cast(), Release);
-        }
+        // if IS_MULTIPLE_RECEIVER {
+        //     if !bag[index]
+        //         .swap(value.into_ptr().as_ptr().cast(), Release)
+        //         .is_null()
+        //     {
+        //         // Protocol:
+        //         // - The receiver always swaps read ptrs with 0.
+        //         // - A set bit in the status implies eventual consistency in the
+        // atomic ptr         //   (i.e. a value will be present).
+        //         // - If the receiver swap/load returns zero, we are between the bit
+        // set         //   instruction and the sender store/swap.
+        //         // - Thus, the receiver swaps a non-zero value into the ptr.
+        //         // - If the sender already performed its store, then the swap will
+        // return a         //   non-zero value and the receiver will undo its
+        // swap.         // - Otherwise, the receiver will still get a zero and
+        // will go to sleep.         // - Thus, if we see a non-zero value we
+        // must wake the receiver up.
+        //
+        //         // TODO it's also possible to accidentally steal a value (because the
+        // receiver         //  must zero their bit before taking the ptr) so
+        // check for specific value         todo!("wake")
+        //     }
+        // } else {
+        //     bag[index].store(value.into_ptr().as_ptr().cast(), Release);
+        // }
 
         if status_view.is_sleeping() {
             // status.fetch_and(!SLEEP_MASK, Relaxed);
@@ -98,7 +99,7 @@ impl<const N: usize, T: Allocated, const IS_MULTIPLE_RECEIVER: bool>
     }
 }
 
-impl<const N: usize, T: Allocated, I: ReceiverImpl<T>> Receiver<N, T, I> {
+impl<const N: usize, T, I: ReceiverImpl<T>> Receiver<N, T, I> {
     pub fn items(&'_ self, timeout: Duration) -> impl Iterator<Item = T> + '_ {
         let Self { inner, internal } = self;
         let Inner { status, bag } = &**inner;
@@ -108,11 +109,9 @@ impl<const N: usize, T: Allocated, I: ReceiverImpl<T>> Receiver<N, T, I> {
             todo!("wait");
         }
 
-        status_view.into_iter().filter_map(|block| {
-            internal
-                .retrieve_ptr(block, status, bag)
-                .map(|ptr| unsafe { T::from_ptr(ptr.cast()) })
-        })
+        status_view
+            .into_iter()
+            .filter_map(|block| internal.retrieve_ptr(block, status, bag).map(|ptr| todo!()))
     }
 }
 
@@ -136,7 +135,7 @@ mod receiver_impls {
 
     use status::Block;
 
-    use super::{status, ReceiverImpl};
+    use super::{ReceiverImpl, status};
 
     pub struct SingleReceiverImpl<const N: usize, T> {
         prev_ptrs: [*mut T; N],

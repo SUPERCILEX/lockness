@@ -24,6 +24,6 @@ ringbuf = "0.3.3"
 supercilex-tests = "0.4.4"
 thingbuf = "0.1.4"
 
-[[bench]]
-name = "atomic_bag"
-harness = false
+#[[bench]]
+#name = "atomic_bag"
+#harness = false

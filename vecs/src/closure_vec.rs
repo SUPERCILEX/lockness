@@ -1,5 +1,5 @@
 use std::{
-    mem::{transmute, ManuallyDrop},
+    mem::{ManuallyDrop, transmute},
     ptr,
     ptr::NonNull,
 };

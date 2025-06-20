@@ -1,136 +1,146 @@
-// Bag can hold items or lists of items, cutoff is half size of bag at which
-// point you must add lists
+use std::{num::NonZeroUsize, thread};
 
-use std::marker::PhantomData;
-use std::num::{NonZeroU32, NonZeroUsize};
-use std::thread;
+use bon::Builder;
 
-pub struct LocknessExecutorBuilder<Message, ThreadInitializer> {
+use crate::config::{Config, False, True};
+
+pub mod config {
+    pub trait Config {
+        const NUM_TASK_TYPES: usize;
+        type AllowTasksToSpawnMoreTasks;
+        type DequeBias;
+
+        type ThreadLocalState;
+
+        fn thread_initializer(self) -> Self::ThreadLocalState;
+    }
+
+    pub struct True;
+    pub struct False;
+
+    pub struct Fifo;
+    pub struct Lifo;
+}
+
+#[derive(Builder)]
+#[builder(builder_type(vis = "pub", name = LocknessExecutorBuilder))]
+#[builder(finish_fn(vis = "", name = build_internal))]
+struct DynamicParams {
     max_threads: Option<NonZeroUsize>,
-    message_type: PhantomData<Message>,
-    thread_initializer: ThreadInitializer,
 }
 
-impl<M, T> LocknessExecutorBuilder<M, T> {
-    pub fn max_threads(self, max_threads: impl Into<NonZeroUsize>) -> Self {
-        let Self {
-            max_threads: _,
-            message_type,
-            thread_initializer,
-        } = self;
-        LocknessExecutorBuilder {
-            max_threads: Some(max_threads.into()),
-            message_type,
-            thread_initializer,
-        }
+impl LocknessExecutorBuilder {
+    pub fn new() -> Self {
+        DynamicParams::builder()
     }
+}
 
-    pub fn thread_initializer<ThreadInitializer>(
-        self,
-        thread_initializer: ThreadInitializer,
-    ) -> LocknessExecutorBuilder<M, ThreadInitializer> {
-        let Self {
-            max_threads,
-            message_type: message,
-            thread_initializer: _,
-        } = self;
-        LocknessExecutorBuilder {
-            max_threads,
-            message_type: message,
-            thread_initializer,
-        }
+impl Default for LocknessExecutorBuilder {
+    fn default() -> Self {
+        Self::new()
     }
+}
 
-    pub fn build(self) -> LocknessExecutor<M, T> {
-        let LocknessExecutorBuilder {
-            max_threads,
-            message_type,
-            thread_initializer,
-        } = self;
+impl<S: lockness_executor_builder::IsComplete> LocknessExecutorBuilder<S> {
+    pub fn build<C>(self, config: C) -> LocknessExecutor<C> {
         LocknessExecutor {
-            max_threads: max_threads
-                .or_else(|| thread::available_parallelism().ok())
-                .map(|p| NonZeroU32::try_from(p).unwrap_or(NonZeroU32::MAX))
-                .unwrap_or(const { NonZeroU32::new(1).unwrap() }),
-            thread_initializer,
-            messenger: LocknessMessenger { message_type },
+            inner: Inner {
+                params: self.build_internal(),
+                config,
+            },
         }
     }
 }
 
-pub struct LocknessMessenger<M> {
-    message_type: PhantomData<M>,
+struct Inner<C> {
+    params: DynamicParams,
+    config: C,
 }
 
-impl<M: Send> LocknessMessenger<M> {
-    pub fn send(&self, message: M) -> Result<(), M> {
+pub struct LocknessExecutor<C> {
+    inner: Inner<C>,
+}
+
+pub struct Spawner<C> {
+    inner: Inner<C>,
+}
+
+pub struct SpawnBuffer<C> {
+    inner: Inner<C>,
+}
+
+pub struct Finisher {}
+
+impl<C> LocknessExecutor<C> {
+    pub fn spawner(&self) -> Spawner<C> {
+        todo!()
+    }
+
+    pub fn finisher(self) -> Finisher {
         todo!()
     }
 }
 
-pub struct LocknessExecutor<Message, ThreadInitializer> {
-    max_threads: NonZeroU32,
-    thread_initializer: ThreadInitializer,
-    messenger: LocknessMessenger<Message>,
-}
-
-pub type NoInitializer<Message> = fn(&LocknessMessenger<Message>) -> ();
-
-pub type SimpleLocknessExecutor<Message> = LocknessExecutor<Message, NoInitializer<Message>>;
-
-impl LocknessExecutor<(), ()> {
-    pub fn builder<Message>() -> LocknessExecutorBuilder<Message, NoInitializer<Message>> {
-        LocknessExecutorBuilder {
-            max_threads: None,
-            message_type: PhantomData,
-            thread_initializer: |_| (),
-        }
+impl<C> Spawner<C> {
+    pub fn buffer(&self) -> SpawnBuffer<C> {
+        todo!()
     }
-}
 
-pub struct MessageIterator<M> {
-    _message_type: PhantomData<M>,
-}
-
-impl<M> Iterator for MessageIterator<M> {
-    type Item = M;
-
-    fn next(&mut self) -> Option<Self::Item> {
+    pub fn yield_(&self) {
         todo!()
     }
 }
 
-impl<
-    Message: Send,
-    State,
-    ThreadInitializer: (FnMut(&LocknessMessenger<Message>) -> State) + Send + 'static,
-> LocknessExecutor<Message, ThreadInitializer>
+impl<C> SpawnBuffer<C> {
+    pub fn flush(&self) {
+        todo!()
+    }
+}
+
+impl<C: Config<AllowTasksToSpawnMoreTasks = False, ThreadLocalState = ()> + Clone + Send + 'static>
+    Spawner<C>
 {
-    pub fn spawn<F: FnOnce((&mut State, &Self)) + Send + 'static>(&self, f: F) {}
-
-    pub fn finish(self) -> Result<MessageIterator<Message>, ()> {
-        Ok(todo!())
-    }
+    pub fn spawn0<F: FnOnce() + Send + 'static>(&self, f: F) {}
 }
 
-impl<Message: Send, ThreadInitializer> LocknessExecutor<Message, ThreadInitializer> {
-    pub fn messenger(&self) -> &LocknessMessenger<Message> {
-        todo!()
-    }
-
-    pub fn send(&self, message: Message) -> Result<(), Message> {
-        self.messenger().send(message)
-    }
+impl<C: Config<AllowTasksToSpawnMoreTasks = True, ThreadLocalState = ()> + Clone + Send + 'static>
+    Spawner<C>
+{
+    pub fn spawn1<F: FnOnce(&Spawner<C>) + Send + 'static>(&self, f: F) {}
 }
 
-impl<Message, ThreadInitializer> LocknessExecutor<Message, ThreadInitializer> {
-    pub fn cancel(&self) {
-        todo!()
-    }
+impl<C: Config<AllowTasksToSpawnMoreTasks = False> + Clone + Send + 'static> Spawner<C> {
+    pub fn spawn2<F: FnOnce(&mut C::ThreadLocalState) + Send + 'static>(&self, f: F) {}
+}
 
-    #[must_use]
-    pub fn is_cancelled(&self) -> bool {
-        todo!()
+impl<C: Config<AllowTasksToSpawnMoreTasks = True> + Clone + Send + 'static> Spawner<C> {
+    pub fn spawn3<F: FnOnce(&Spawner<C>, &mut C::ThreadLocalState) + Send + 'static>(&self, f: F) {}
+}
+
+impl<C: Config<AllowTasksToSpawnMoreTasks = False, ThreadLocalState = ()> + Clone + Send + 'static>
+    SpawnBuffer<C>
+{
+    pub fn spawn0<F: FnOnce() + Send + 'static>(&self, f: F) {}
+}
+
+impl<C: Config<AllowTasksToSpawnMoreTasks = True, ThreadLocalState = ()> + Clone + Send + 'static>
+    SpawnBuffer<C>
+{
+    pub fn spawn1<F: FnOnce(&Spawner<C>) + Send + 'static>(&self, f: F) {}
+}
+
+impl<C: Config<AllowTasksToSpawnMoreTasks = False> + Clone + Send + 'static> SpawnBuffer<C> {
+    pub fn spawn2<F: FnOnce(&mut C::ThreadLocalState) + Send + 'static>(&self, f: F) {}
+}
+
+impl<C: Config<AllowTasksToSpawnMoreTasks = True> + Clone + Send + 'static> SpawnBuffer<C> {
+    pub fn spawn3<F: FnOnce(&Spawner<C>, &mut C::ThreadLocalState) + Send + 'static>(&self, f: F) {}
+}
+
+impl Finisher {
+    pub fn reap(self) -> impl IntoIterator<Item = thread::Result<()>> {
+        todo!();
+        []
     }
 }
 

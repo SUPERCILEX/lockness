@@ -1,7 +1,7 @@
 use std::{
-    alloc::{alloc, dealloc, handle_alloc_error, realloc, Layout},
+    alloc::{Layout, alloc, dealloc, handle_alloc_error, realloc},
     cmp,
-    mem::{align_of, size_of, ManuallyDrop},
+    mem::{ManuallyDrop, align_of, size_of},
     ptr,
     ptr::NonNull,
 };
