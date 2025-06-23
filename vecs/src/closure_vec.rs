@@ -14,6 +14,7 @@ pub struct ClosureVec<F: FnOnce()> {
     data: FreestandingVec<Metadata, F>,
 }
 
+// TODO should there be a 'static bound here?
 #[allow(clippy::non_send_fields_in_send_ty)]
 unsafe impl<T: FnOnce() + Send> Send for ClosureVec<T> {}
 

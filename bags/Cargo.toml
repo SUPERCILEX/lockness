@@ -10,6 +10,7 @@ categories = ["concurrency", "asynchronous", "data-structures"]
 license.workspace = true
 
 [dependencies]
+arrayvec = "0.7.6"
 rustix = { version = "0.38.28", features = ["thread", "linux_latest"] }
 
 [dev-dependencies]

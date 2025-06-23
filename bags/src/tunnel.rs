@@ -1,16 +1,16 @@
 use std::sync::{
     Arc,
     atomic::AtomicPtr,
-    mpsc::{RecvError, SendError, TryRecvError, TrySendError},
+    mpsc::{RecvError, SendError, TrySendError},
 };
 
-pub fn mpsc<T: Send + 'static>() -> (Sender<T>, Receiver<T>) {
+pub fn mpsc<T>() -> (Sender<T>, Receiver<T>) {
     todo!()
 }
 
 #[derive(Debug)]
 struct Inner<T> {
-    slot: AtomicPtr<T>,
+    data: AtomicPtr<T>,
 }
 
 #[derive(Debug)]
@@ -22,7 +22,7 @@ pub struct Receiver<T> {
     t: T,
 }
 
-impl<T: Send + 'static> Sender<T> {
+impl<T> Sender<T> {
     pub fn send(&self, data: T) -> Result<(), SendError<T>> {
         todo!()
     }
@@ -41,12 +41,8 @@ impl<T> Clone for Sender<T> {
     }
 }
 
-impl<T: Send + 'static> Receiver<T> {
+impl<T> Receiver<T> {
     pub fn recv(&self) -> Result<T, RecvError> {
-        todo!()
-    }
-
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
         todo!()
     }
 }

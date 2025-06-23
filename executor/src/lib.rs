@@ -1,4 +1,4 @@
-use std::{num::NonZeroUsize, thread};
+use std::{num::NonZeroUsize, thread, thread::JoinHandle};
 
 use bon::Builder;
 
@@ -89,6 +89,13 @@ impl<C> Spawner<C> {
     pub fn yield_(&self) {
         todo!()
     }
+
+    pub fn drain(&self) {
+        todo!(
+            "Blocks until all local tasks have been offloaded to other threads. Does nothing if \
+             max_threads=1"
+        )
+    }
 }
 
 impl<C> SpawnBuffer<C> {
@@ -97,50 +104,25 @@ impl<C> SpawnBuffer<C> {
     }
 }
 
-impl<C: Config<AllowTasksToSpawnMoreTasks = False, ThreadLocalState = ()> + Clone + Send + 'static>
-    Spawner<C>
-{
-    pub fn spawn0<F: FnOnce() + Send + 'static>(&self, f: F) {}
-}
-
-impl<C: Config<AllowTasksToSpawnMoreTasks = True, ThreadLocalState = ()> + Clone + Send + 'static>
-    Spawner<C>
-{
-    pub fn spawn1<F: FnOnce(&Spawner<C>) + Send + 'static>(&self, f: F) {}
-}
-
-impl<C: Config<AllowTasksToSpawnMoreTasks = False> + Clone + Send + 'static> Spawner<C> {
-    pub fn spawn2<F: FnOnce(&mut C::ThreadLocalState) + Send + 'static>(&self, f: F) {}
+impl<C: Config + Clone + Send + 'static> Spawner<C> {
+    pub fn spawn0<F: FnOnce(&mut C::ThreadLocalState) + Send + 'static>(&self, f: F) {}
 }
 
 impl<C: Config<AllowTasksToSpawnMoreTasks = True> + Clone + Send + 'static> Spawner<C> {
-    pub fn spawn3<F: FnOnce(&Spawner<C>, &mut C::ThreadLocalState) + Send + 'static>(&self, f: F) {}
+    pub fn spawn1<F: FnOnce(&Spawner<C>, &mut C::ThreadLocalState) + Send + 'static>(&self, f: F) {}
 }
 
-impl<C: Config<AllowTasksToSpawnMoreTasks = False, ThreadLocalState = ()> + Clone + Send + 'static>
-    SpawnBuffer<C>
-{
-    pub fn spawn0<F: FnOnce() + Send + 'static>(&self, f: F) {}
-}
-
-impl<C: Config<AllowTasksToSpawnMoreTasks = True, ThreadLocalState = ()> + Clone + Send + 'static>
-    SpawnBuffer<C>
-{
-    pub fn spawn1<F: FnOnce(&Spawner<C>) + Send + 'static>(&self, f: F) {}
-}
-
-impl<C: Config<AllowTasksToSpawnMoreTasks = False> + Clone + Send + 'static> SpawnBuffer<C> {
-    pub fn spawn2<F: FnOnce(&mut C::ThreadLocalState) + Send + 'static>(&self, f: F) {}
+impl<C: Config + Clone + Send + 'static> SpawnBuffer<C> {
+    pub fn spawn0<F: FnOnce(&mut C::ThreadLocalState) + Send + 'static>(&self, f: F) {}
 }
 
 impl<C: Config<AllowTasksToSpawnMoreTasks = True> + Clone + Send + 'static> SpawnBuffer<C> {
-    pub fn spawn3<F: FnOnce(&Spawner<C>, &mut C::ThreadLocalState) + Send + 'static>(&self, f: F) {}
+    pub fn spawn1<F: FnOnce(&Spawner<C>, &mut C::ThreadLocalState) + Send + 'static>(&self, f: F) {}
 }
 
 impl Finisher {
-    pub fn reap(self) -> impl IntoIterator<Item = thread::Result<()>> {
+    pub fn threads(self) -> Vec<JoinHandle<()>> {
         todo!();
-        []
     }
 }
 

@@ -2,10 +2,12 @@ use std::{mem, ptr, sync::atomic::AtomicU32, time::Instant};
 
 use rustix::thread::{FutexFlags, FutexOperation, Timespec, futex};
 
-mod bags;
-mod slot;
+mod cache_padded;
+mod mpsc;
+mod tunnel;
 
-pub use slot::{Receiver as SlotReceiver, Sender as SlotSender, mpsc as mpsc_slot};
+pub use mpsc::{Receiver as MpscReceiver, Sender as MpscSender, mpsc};
+pub use tunnel::{Receiver as TunnelReceiver, Sender as TunnelSender, mpsc as mpsc_tunnel};
 
 fn atomic_wake(a: &AtomicU32) {
     unsafe {
