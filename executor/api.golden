@@ -1,85 +1,248 @@
-pub mod lockness_scheduler
-pub struct lockness_scheduler::Builder
-impl lockness_scheduler::Builder
-pub fn lockness_scheduler::Builder::build(self) -> lockness_scheduler::Scheduler<()>
-pub fn lockness_scheduler::Builder::build_for_detached<E: core::marker::Send + 'static>(self) -> lockness_scheduler::Scheduler<E>
-pub fn lockness_scheduler::Builder::max_num_threads(&mut self, max: core::num::nonzero::NonZeroU8) -> &mut Self
-pub fn lockness_scheduler::Builder::new() -> Self
-impl core::default::Default for lockness_scheduler::Builder
-pub fn lockness_scheduler::Builder::default() -> Self
-impl core::marker::Send for lockness_scheduler::Builder
-impl core::marker::Sync for lockness_scheduler::Builder
-impl core::marker::Unpin for lockness_scheduler::Builder
-impl core::panic::unwind_safe::RefUnwindSafe for lockness_scheduler::Builder
-impl core::panic::unwind_safe::UnwindSafe for lockness_scheduler::Builder
-impl<T, U> core::convert::Into<U> for lockness_scheduler::Builder where U: core::convert::From<T>
-pub fn lockness_scheduler::Builder::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for lockness_scheduler::Builder where U: core::convert::Into<T>
-pub type lockness_scheduler::Builder::Error = core::convert::Infallible
-pub fn lockness_scheduler::Builder::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for lockness_scheduler::Builder where U: core::convert::TryFrom<T>
-pub type lockness_scheduler::Builder::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn lockness_scheduler::Builder::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for lockness_scheduler::Builder where T: 'static + core::marker::Sized
-pub fn lockness_scheduler::Builder::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for lockness_scheduler::Builder where T: core::marker::Sized
-pub fn lockness_scheduler::Builder::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for lockness_scheduler::Builder where T: core::marker::Sized
-pub fn lockness_scheduler::Builder::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for lockness_scheduler::Builder
-pub fn lockness_scheduler::Builder::from(t: T) -> T
-pub struct lockness_scheduler::JoinHandle<T>
-impl<T> lockness_scheduler::JoinHandle<T>
-pub fn lockness_scheduler::JoinHandle<T>::result(self) -> T
-impl<T> core::marker::Send for lockness_scheduler::JoinHandle<T> where T: core::marker::Send
-impl<T> core::marker::Sync for lockness_scheduler::JoinHandle<T> where T: core::marker::Sync
-impl<T> core::marker::Unpin for lockness_scheduler::JoinHandle<T> where T: core::marker::Unpin
-impl<T> core::panic::unwind_safe::RefUnwindSafe for lockness_scheduler::JoinHandle<T> where T: core::panic::unwind_safe::RefUnwindSafe
-impl<T> core::panic::unwind_safe::UnwindSafe for lockness_scheduler::JoinHandle<T> where T: core::panic::unwind_safe::UnwindSafe
-impl<T, U> core::convert::Into<U> for lockness_scheduler::JoinHandle<T> where U: core::convert::From<T>
-pub fn lockness_scheduler::JoinHandle<T>::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for lockness_scheduler::JoinHandle<T> where U: core::convert::Into<T>
-pub type lockness_scheduler::JoinHandle<T>::Error = core::convert::Infallible
-pub fn lockness_scheduler::JoinHandle<T>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for lockness_scheduler::JoinHandle<T> where U: core::convert::TryFrom<T>
-pub type lockness_scheduler::JoinHandle<T>::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn lockness_scheduler::JoinHandle<T>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for lockness_scheduler::JoinHandle<T> where T: 'static + core::marker::Sized
-pub fn lockness_scheduler::JoinHandle<T>::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for lockness_scheduler::JoinHandle<T> where T: core::marker::Sized
-pub fn lockness_scheduler::JoinHandle<T>::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for lockness_scheduler::JoinHandle<T> where T: core::marker::Sized
-pub fn lockness_scheduler::JoinHandle<T>::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for lockness_scheduler::JoinHandle<T>
-pub fn lockness_scheduler::JoinHandle<T>::from(t: T) -> T
-pub struct lockness_scheduler::Scheduler<E>
-impl<E: core::marker::Send + 'static> lockness_scheduler::Scheduler<E>
-pub fn lockness_scheduler::Scheduler<E>::abort(self)
-pub fn lockness_scheduler::Scheduler<E>::shutdown<Errors: core::iter::traits::iterator::Iterator<Item = E>>(self) -> Errors
-pub fn lockness_scheduler::Scheduler<E>::spawn<F: core::ops::function::FnOnce() -> T + core::marker::Send + 'static, T: core::marker::Send + 'static>(&self, _f: F) -> lockness_scheduler::JoinHandle<T>
-pub fn lockness_scheduler::Scheduler<E>::spawn_detached<F: core::ops::function::FnOnce() -> core::result::Result<(), E> + core::marker::Send + 'static>(&self, _f: F)
-impl<E> core::ops::drop::Drop for lockness_scheduler::Scheduler<E>
-pub fn lockness_scheduler::Scheduler<E>::drop(&mut self)
-impl<E> core::marker::Send for lockness_scheduler::Scheduler<E> where E: core::marker::Send
-impl<E> core::marker::Sync for lockness_scheduler::Scheduler<E> where E: core::marker::Sync
-impl<E> core::marker::Unpin for lockness_scheduler::Scheduler<E> where E: core::marker::Unpin
-impl<E> core::panic::unwind_safe::RefUnwindSafe for lockness_scheduler::Scheduler<E> where E: core::panic::unwind_safe::RefUnwindSafe
-impl<E> core::panic::unwind_safe::UnwindSafe for lockness_scheduler::Scheduler<E> where E: core::panic::unwind_safe::UnwindSafe
-impl<T, U> core::convert::Into<U> for lockness_scheduler::Scheduler<E> where U: core::convert::From<T>
-pub fn lockness_scheduler::Scheduler<E>::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for lockness_scheduler::Scheduler<E> where U: core::convert::Into<T>
-pub type lockness_scheduler::Scheduler<E>::Error = core::convert::Infallible
-pub fn lockness_scheduler::Scheduler<E>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for lockness_scheduler::Scheduler<E> where U: core::convert::TryFrom<T>
-pub type lockness_scheduler::Scheduler<E>::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn lockness_scheduler::Scheduler<E>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for lockness_scheduler::Scheduler<E> where T: 'static + core::marker::Sized
-pub fn lockness_scheduler::Scheduler<E>::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for lockness_scheduler::Scheduler<E> where T: core::marker::Sized
-pub fn lockness_scheduler::Scheduler<E>::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for lockness_scheduler::Scheduler<E> where T: core::marker::Sized
-pub fn lockness_scheduler::Scheduler<E>::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for lockness_scheduler::Scheduler<E>
-pub fn lockness_scheduler::Scheduler<E>::from(t: T) -> T
-pub fn lockness_scheduler::spawn<F: core::ops::function::FnOnce() -> T + core::marker::Send + 'static, T: core::marker::Send + 'static>(_f: F) -> lockness_scheduler::JoinHandle<T>
-pub fn lockness_scheduler::spawn_detached<F: core::ops::function::FnOnce() -> core::result::Result<(), E> + core::marker::Send + 'static, E: core::marker::Send + 'static>(_f: F)
+pub mod lockness_executor
+pub mod lockness_executor::config
+pub struct lockness_executor::config::False
+impl core::marker::Freeze for lockness_executor::config::False
+impl core::marker::Send for lockness_executor::config::False
+impl core::marker::Sync for lockness_executor::config::False
+impl core::marker::Unpin for lockness_executor::config::False
+impl core::panic::unwind_safe::RefUnwindSafe for lockness_executor::config::False
+impl core::panic::unwind_safe::UnwindSafe for lockness_executor::config::False
+impl<T, U> core::convert::Into<U> for lockness_executor::config::False where U: core::convert::From<T>
+pub fn lockness_executor::config::False::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for lockness_executor::config::False where U: core::convert::Into<T>
+pub type lockness_executor::config::False::Error = core::convert::Infallible
+pub fn lockness_executor::config::False::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for lockness_executor::config::False where U: core::convert::TryFrom<T>
+pub type lockness_executor::config::False::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn lockness_executor::config::False::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for lockness_executor::config::False where T: 'static + ?core::marker::Sized
+pub fn lockness_executor::config::False::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for lockness_executor::config::False where T: ?core::marker::Sized
+pub fn lockness_executor::config::False::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for lockness_executor::config::False where T: ?core::marker::Sized
+pub fn lockness_executor::config::False::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for lockness_executor::config::False
+pub fn lockness_executor::config::False::from(t: T) -> T
+pub struct lockness_executor::config::Fifo
+impl core::marker::Freeze for lockness_executor::config::Fifo
+impl core::marker::Send for lockness_executor::config::Fifo
+impl core::marker::Sync for lockness_executor::config::Fifo
+impl core::marker::Unpin for lockness_executor::config::Fifo
+impl core::panic::unwind_safe::RefUnwindSafe for lockness_executor::config::Fifo
+impl core::panic::unwind_safe::UnwindSafe for lockness_executor::config::Fifo
+impl<T, U> core::convert::Into<U> for lockness_executor::config::Fifo where U: core::convert::From<T>
+pub fn lockness_executor::config::Fifo::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for lockness_executor::config::Fifo where U: core::convert::Into<T>
+pub type lockness_executor::config::Fifo::Error = core::convert::Infallible
+pub fn lockness_executor::config::Fifo::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for lockness_executor::config::Fifo where U: core::convert::TryFrom<T>
+pub type lockness_executor::config::Fifo::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn lockness_executor::config::Fifo::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for lockness_executor::config::Fifo where T: 'static + ?core::marker::Sized
+pub fn lockness_executor::config::Fifo::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for lockness_executor::config::Fifo where T: ?core::marker::Sized
+pub fn lockness_executor::config::Fifo::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for lockness_executor::config::Fifo where T: ?core::marker::Sized
+pub fn lockness_executor::config::Fifo::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for lockness_executor::config::Fifo
+pub fn lockness_executor::config::Fifo::from(t: T) -> T
+pub struct lockness_executor::config::Lifo
+impl core::marker::Freeze for lockness_executor::config::Lifo
+impl core::marker::Send for lockness_executor::config::Lifo
+impl core::marker::Sync for lockness_executor::config::Lifo
+impl core::marker::Unpin for lockness_executor::config::Lifo
+impl core::panic::unwind_safe::RefUnwindSafe for lockness_executor::config::Lifo
+impl core::panic::unwind_safe::UnwindSafe for lockness_executor::config::Lifo
+impl<T, U> core::convert::Into<U> for lockness_executor::config::Lifo where U: core::convert::From<T>
+pub fn lockness_executor::config::Lifo::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for lockness_executor::config::Lifo where U: core::convert::Into<T>
+pub type lockness_executor::config::Lifo::Error = core::convert::Infallible
+pub fn lockness_executor::config::Lifo::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for lockness_executor::config::Lifo where U: core::convert::TryFrom<T>
+pub type lockness_executor::config::Lifo::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn lockness_executor::config::Lifo::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for lockness_executor::config::Lifo where T: 'static + ?core::marker::Sized
+pub fn lockness_executor::config::Lifo::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for lockness_executor::config::Lifo where T: ?core::marker::Sized
+pub fn lockness_executor::config::Lifo::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for lockness_executor::config::Lifo where T: ?core::marker::Sized
+pub fn lockness_executor::config::Lifo::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for lockness_executor::config::Lifo
+pub fn lockness_executor::config::Lifo::from(t: T) -> T
+pub struct lockness_executor::config::True
+impl core::marker::Freeze for lockness_executor::config::True
+impl core::marker::Send for lockness_executor::config::True
+impl core::marker::Sync for lockness_executor::config::True
+impl core::marker::Unpin for lockness_executor::config::True
+impl core::panic::unwind_safe::RefUnwindSafe for lockness_executor::config::True
+impl core::panic::unwind_safe::UnwindSafe for lockness_executor::config::True
+impl<T, U> core::convert::Into<U> for lockness_executor::config::True where U: core::convert::From<T>
+pub fn lockness_executor::config::True::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for lockness_executor::config::True where U: core::convert::Into<T>
+pub type lockness_executor::config::True::Error = core::convert::Infallible
+pub fn lockness_executor::config::True::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for lockness_executor::config::True where U: core::convert::TryFrom<T>
+pub type lockness_executor::config::True::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn lockness_executor::config::True::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for lockness_executor::config::True where T: 'static + ?core::marker::Sized
+pub fn lockness_executor::config::True::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for lockness_executor::config::True where T: ?core::marker::Sized
+pub fn lockness_executor::config::True::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for lockness_executor::config::True where T: ?core::marker::Sized
+pub fn lockness_executor::config::True::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for lockness_executor::config::True
+pub fn lockness_executor::config::True::from(t: T) -> T
+pub trait lockness_executor::config::Config
+pub type lockness_executor::config::Config::AllowTasksToSpawnMoreTasks
+pub type lockness_executor::config::Config::DequeBias
+pub type lockness_executor::config::Config::ThreadLocalState
+pub const lockness_executor::config::Config::NUM_TASK_TYPES: usize
+pub fn lockness_executor::config::Config::thread_initializer(self) -> Self::ThreadLocalState
+pub struct lockness_executor::Finisher
+impl core::iter::traits::iterator::Iterator for lockness_executor::Finisher
+pub type lockness_executor::Finisher::Item = alloc::boxed::Box<(dyn core::any::Any + core::marker::Send)>
+pub fn lockness_executor::Finisher::next(&mut self) -> core::option::Option<Self::Item>
+impl core::marker::Freeze for lockness_executor::Finisher
+impl core::marker::Send for lockness_executor::Finisher
+impl core::marker::Sync for lockness_executor::Finisher
+impl core::marker::Unpin for lockness_executor::Finisher
+impl core::panic::unwind_safe::RefUnwindSafe for lockness_executor::Finisher
+impl core::panic::unwind_safe::UnwindSafe for lockness_executor::Finisher
+impl<I> core::iter::traits::collect::IntoIterator for lockness_executor::Finisher where I: core::iter::traits::iterator::Iterator
+pub type lockness_executor::Finisher::IntoIter = I
+pub type lockness_executor::Finisher::Item = <I as core::iter::traits::iterator::Iterator>::Item
+pub fn lockness_executor::Finisher::into_iter(self) -> I
+impl<T, U> core::convert::Into<U> for lockness_executor::Finisher where U: core::convert::From<T>
+pub fn lockness_executor::Finisher::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for lockness_executor::Finisher where U: core::convert::Into<T>
+pub type lockness_executor::Finisher::Error = core::convert::Infallible
+pub fn lockness_executor::Finisher::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for lockness_executor::Finisher where U: core::convert::TryFrom<T>
+pub type lockness_executor::Finisher::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn lockness_executor::Finisher::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for lockness_executor::Finisher where T: 'static + ?core::marker::Sized
+pub fn lockness_executor::Finisher::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for lockness_executor::Finisher where T: ?core::marker::Sized
+pub fn lockness_executor::Finisher::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for lockness_executor::Finisher where T: ?core::marker::Sized
+pub fn lockness_executor::Finisher::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for lockness_executor::Finisher
+pub fn lockness_executor::Finisher::from(t: T) -> T
+pub struct lockness_executor::LocknessExecutor<C>
+impl<C> lockness_executor::LocknessExecutor<C>
+pub fn lockness_executor::LocknessExecutor<C>::finisher(self) -> lockness_executor::Finisher
+pub fn lockness_executor::LocknessExecutor<C>::spawner(&self) -> lockness_executor::Spawner<C>
+impl<C> core::marker::Freeze for lockness_executor::LocknessExecutor<C> where C: core::marker::Freeze
+impl<C> core::marker::Send for lockness_executor::LocknessExecutor<C> where C: core::marker::Send
+impl<C> core::marker::Sync for lockness_executor::LocknessExecutor<C> where C: core::marker::Sync
+impl<C> core::marker::Unpin for lockness_executor::LocknessExecutor<C> where C: core::marker::Unpin
+impl<C> core::panic::unwind_safe::RefUnwindSafe for lockness_executor::LocknessExecutor<C> where C: core::panic::unwind_safe::RefUnwindSafe
+impl<C> core::panic::unwind_safe::UnwindSafe for lockness_executor::LocknessExecutor<C> where C: core::panic::unwind_safe::UnwindSafe
+impl<T, U> core::convert::Into<U> for lockness_executor::LocknessExecutor<C> where U: core::convert::From<T>
+pub fn lockness_executor::LocknessExecutor<C>::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for lockness_executor::LocknessExecutor<C> where U: core::convert::Into<T>
+pub type lockness_executor::LocknessExecutor<C>::Error = core::convert::Infallible
+pub fn lockness_executor::LocknessExecutor<C>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for lockness_executor::LocknessExecutor<C> where U: core::convert::TryFrom<T>
+pub type lockness_executor::LocknessExecutor<C>::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn lockness_executor::LocknessExecutor<C>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for lockness_executor::LocknessExecutor<C> where T: 'static + ?core::marker::Sized
+pub fn lockness_executor::LocknessExecutor<C>::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for lockness_executor::LocknessExecutor<C> where T: ?core::marker::Sized
+pub fn lockness_executor::LocknessExecutor<C>::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for lockness_executor::LocknessExecutor<C> where T: ?core::marker::Sized
+pub fn lockness_executor::LocknessExecutor<C>::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for lockness_executor::LocknessExecutor<C>
+pub fn lockness_executor::LocknessExecutor<C>::from(t: T) -> T
+pub struct lockness_executor::LocknessExecutorBuilder<S: lockness_executor::lockness_executor_builder::State>
+impl lockness_executor::LocknessExecutorBuilder
+pub fn lockness_executor::LocknessExecutorBuilder::new() -> Self
+impl<S: lockness_executor::lockness_executor_builder::IsComplete> lockness_executor::LocknessExecutorBuilder<S>
+pub fn lockness_executor::LocknessExecutorBuilder<S>::build<C>(self, config: C) -> lockness_executor::LocknessExecutor<C>
+impl core::default::Default for lockness_executor::LocknessExecutorBuilder
+pub fn lockness_executor::LocknessExecutorBuilder::default() -> Self
+impl<S: lockness_executor::lockness_executor_builder::State> lockness_executor::LocknessExecutorBuilder<S>
+pub fn lockness_executor::LocknessExecutorBuilder<S>::max_threads(self, value: core::num::nonzero::NonZeroUsize) -> lockness_executor::LocknessExecutorBuilder<lockness_executor::lockness_executor_builder::SetMaxThreads<S>> where <S as lockness_executor::lockness_executor_builder::State>::MaxThreads: bon::builder_state::IsUnset
+pub fn lockness_executor::LocknessExecutorBuilder<S>::maybe_max_threads(self, value: core::option::Option<core::num::nonzero::NonZeroUsize>) -> lockness_executor::LocknessExecutorBuilder<lockness_executor::lockness_executor_builder::SetMaxThreads<S>> where <S as lockness_executor::lockness_executor_builder::State>::MaxThreads: bon::builder_state::IsUnset
+impl<S> core::marker::Freeze for lockness_executor::LocknessExecutorBuilder<S>
+impl<S> core::marker::Send for lockness_executor::LocknessExecutorBuilder<S>
+impl<S> core::marker::Sync for lockness_executor::LocknessExecutorBuilder<S>
+impl<S> core::marker::Unpin for lockness_executor::LocknessExecutorBuilder<S>
+impl<S> core::panic::unwind_safe::RefUnwindSafe for lockness_executor::LocknessExecutorBuilder<S>
+impl<S> core::panic::unwind_safe::UnwindSafe for lockness_executor::LocknessExecutorBuilder<S>
+impl<T, U> core::convert::Into<U> for lockness_executor::LocknessExecutorBuilder<S> where U: core::convert::From<T>
+pub fn lockness_executor::LocknessExecutorBuilder<S>::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for lockness_executor::LocknessExecutorBuilder<S> where U: core::convert::Into<T>
+pub type lockness_executor::LocknessExecutorBuilder<S>::Error = core::convert::Infallible
+pub fn lockness_executor::LocknessExecutorBuilder<S>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for lockness_executor::LocknessExecutorBuilder<S> where U: core::convert::TryFrom<T>
+pub type lockness_executor::LocknessExecutorBuilder<S>::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn lockness_executor::LocknessExecutorBuilder<S>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for lockness_executor::LocknessExecutorBuilder<S> where T: 'static + ?core::marker::Sized
+pub fn lockness_executor::LocknessExecutorBuilder<S>::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for lockness_executor::LocknessExecutorBuilder<S> where T: ?core::marker::Sized
+pub fn lockness_executor::LocknessExecutorBuilder<S>::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for lockness_executor::LocknessExecutorBuilder<S> where T: ?core::marker::Sized
+pub fn lockness_executor::LocknessExecutorBuilder<S>::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for lockness_executor::LocknessExecutorBuilder<S>
+pub fn lockness_executor::LocknessExecutorBuilder<S>::from(t: T) -> T
+pub struct lockness_executor::SpawnBuffer<C>
+impl<C: lockness_executor::config::Config + core::clone::Clone + core::marker::Send + 'static> lockness_executor::SpawnBuffer<C>
+pub fn lockness_executor::SpawnBuffer<C>::spawn0<F: core::ops::function::FnOnce(&mut <C as lockness_executor::config::Config>::ThreadLocalState) + core::marker::Send + 'static>(&self, f: F)
+impl<C: lockness_executor::config::Config<AllowTasksToSpawnMoreTasks = lockness_executor::config::True> + core::clone::Clone + core::marker::Send + 'static> lockness_executor::SpawnBuffer<C>
+pub fn lockness_executor::SpawnBuffer<C>::spawn1<F: core::ops::function::FnOnce(&lockness_executor::Spawner<C>, &mut <C as lockness_executor::config::Config>::ThreadLocalState) + core::marker::Send + 'static>(&self, f: F)
+impl<C> lockness_executor::SpawnBuffer<C>
+pub fn lockness_executor::SpawnBuffer<C>::flush(&self)
+impl<C> core::marker::Freeze for lockness_executor::SpawnBuffer<C> where C: core::marker::Freeze
+impl<C> core::marker::Send for lockness_executor::SpawnBuffer<C> where C: core::marker::Send
+impl<C> core::marker::Sync for lockness_executor::SpawnBuffer<C> where C: core::marker::Sync
+impl<C> core::marker::Unpin for lockness_executor::SpawnBuffer<C> where C: core::marker::Unpin
+impl<C> core::panic::unwind_safe::RefUnwindSafe for lockness_executor::SpawnBuffer<C> where C: core::panic::unwind_safe::RefUnwindSafe
+impl<C> core::panic::unwind_safe::UnwindSafe for lockness_executor::SpawnBuffer<C> where C: core::panic::unwind_safe::UnwindSafe
+impl<T, U> core::convert::Into<U> for lockness_executor::SpawnBuffer<C> where U: core::convert::From<T>
+pub fn lockness_executor::SpawnBuffer<C>::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for lockness_executor::SpawnBuffer<C> where U: core::convert::Into<T>
+pub type lockness_executor::SpawnBuffer<C>::Error = core::convert::Infallible
+pub fn lockness_executor::SpawnBuffer<C>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for lockness_executor::SpawnBuffer<C> where U: core::convert::TryFrom<T>
+pub type lockness_executor::SpawnBuffer<C>::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn lockness_executor::SpawnBuffer<C>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for lockness_executor::SpawnBuffer<C> where T: 'static + ?core::marker::Sized
+pub fn lockness_executor::SpawnBuffer<C>::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for lockness_executor::SpawnBuffer<C> where T: ?core::marker::Sized
+pub fn lockness_executor::SpawnBuffer<C>::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for lockness_executor::SpawnBuffer<C> where T: ?core::marker::Sized
+pub fn lockness_executor::SpawnBuffer<C>::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for lockness_executor::SpawnBuffer<C>
+pub fn lockness_executor::SpawnBuffer<C>::from(t: T) -> T
+pub struct lockness_executor::Spawner<C>
+impl<C: lockness_executor::config::Config + core::clone::Clone + core::marker::Send + 'static> lockness_executor::Spawner<C>
+pub fn lockness_executor::Spawner<C>::spawn0<F: core::ops::function::FnOnce(&mut <C as lockness_executor::config::Config>::ThreadLocalState) + core::marker::Send + 'static>(&self, f: F)
+impl<C: lockness_executor::config::Config<AllowTasksToSpawnMoreTasks = lockness_executor::config::True> + core::clone::Clone + core::marker::Send + 'static> lockness_executor::Spawner<C>
+pub fn lockness_executor::Spawner<C>::spawn1<F: core::ops::function::FnOnce(&Self, &mut <C as lockness_executor::config::Config>::ThreadLocalState) + core::marker::Send + 'static>(&self, f: F)
+impl<C> lockness_executor::Spawner<C>
+pub fn lockness_executor::Spawner<C>::buffer(&self) -> lockness_executor::SpawnBuffer<C>
+pub fn lockness_executor::Spawner<C>::drain(&self)
+pub fn lockness_executor::Spawner<C>::yield_(&self)
+impl<C> core::marker::Freeze for lockness_executor::Spawner<C> where C: core::marker::Freeze
+impl<C> core::marker::Send for lockness_executor::Spawner<C> where C: core::marker::Send
+impl<C> core::marker::Sync for lockness_executor::Spawner<C> where C: core::marker::Sync
+impl<C> core::marker::Unpin for lockness_executor::Spawner<C> where C: core::marker::Unpin
+impl<C> core::panic::unwind_safe::RefUnwindSafe for lockness_executor::Spawner<C> where C: core::panic::unwind_safe::RefUnwindSafe
+impl<C> core::panic::unwind_safe::UnwindSafe for lockness_executor::Spawner<C> where C: core::panic::unwind_safe::UnwindSafe
+impl<T, U> core::convert::Into<U> for lockness_executor::Spawner<C> where U: core::convert::From<T>
+pub fn lockness_executor::Spawner<C>::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for lockness_executor::Spawner<C> where U: core::convert::Into<T>
+pub type lockness_executor::Spawner<C>::Error = core::convert::Infallible
+pub fn lockness_executor::Spawner<C>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for lockness_executor::Spawner<C> where U: core::convert::TryFrom<T>
+pub type lockness_executor::Spawner<C>::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn lockness_executor::Spawner<C>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for lockness_executor::Spawner<C> where T: 'static + ?core::marker::Sized
+pub fn lockness_executor::Spawner<C>::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for lockness_executor::Spawner<C> where T: ?core::marker::Sized
+pub fn lockness_executor::Spawner<C>::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for lockness_executor::Spawner<C> where T: ?core::marker::Sized
+pub fn lockness_executor::Spawner<C>::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for lockness_executor::Spawner<C>
+pub fn lockness_executor::Spawner<C>::from(t: T) -> T

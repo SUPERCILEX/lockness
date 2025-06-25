@@ -11,19 +11,19 @@ license.workspace = true
 
 [dependencies]
 arrayvec = "0.7.6"
-rustix = { version = "0.38.28", features = ["thread", "linux_latest"] }
+rustix = { version = "1.0.7", features = ["thread", "linux_latest"] }
 
 [dev-dependencies]
-async-channel = "2.1.1"
-concurrent-queue = "2.4.0"
-criterion = "0.5.1"
-crossbeam-channel = "0.5.8"
-crossbeam-deque = "0.8.3"
-crossbeam-queue = "0.3.8"
-flume = "0.11.0"
-ringbuf = "0.3.3"
-supercilex-tests = "0.4.4"
-thingbuf = "0.1.4"
+async-channel = "2.3.1"
+concurrent-queue = "2.5.0"
+criterion = "0.6.0"
+crossbeam-channel = "0.5.15"
+crossbeam-deque = "0.8.6"
+crossbeam-queue = "0.3.12"
+flume = "0.11.1"
+ringbuf = "0.4.8"
+supercilex-tests = "0.4.18"
+thingbuf = "0.1.6"
 
 #[[bench]]
 #name = "atomic_bag"

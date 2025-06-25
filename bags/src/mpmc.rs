@@ -1,30 +1,25 @@
 use std::{
-    ptr::NonNull,
+    mem::MaybeUninit,
     sync::{
         Arc,
-        atomic::{
-            AtomicPtr, AtomicUsize,
-            Ordering::{Relaxed, Release},
-        },
+        atomic::AtomicUsize,
         mpsc::{RecvError, SendError},
     },
-    time::Duration,
 };
 
 use arrayvec::ArrayVec;
-use status::Block;
 
 use crate::cache_padded::CachePadded;
 
 #[must_use]
-pub fn mpsc<const NUM_BUFFERS: usize, T>() -> (Sender<NUM_BUFFERS, T>, Receiver<NUM_BUFFERS, T>) {
+pub fn mpmc<const NUM_BUFFERS: usize, T>() -> (Sender<NUM_BUFFERS, T>, Receiver<NUM_BUFFERS, T>) {
     todo!()
 }
 
 struct Inner<const N: usize, T> {
     pending: CachePadded<AtomicUsize>,
     committed: CachePadded<AtomicUsize>,
-    bag: [CachePadded<T>; N],
+    bag: [CachePadded<MaybeUninit<T>>; N],
 }
 
 pub struct Sender<const N: usize, T> {
@@ -55,7 +50,7 @@ impl<const N: usize, T> Sender<N, T> {
             size_of::<T>() > 0,
             "Passing a ZST between cores doesn't make much sense. Please open a GitHub issue with \
              your use case."
-        )
+        );
     };
 
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {

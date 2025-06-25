@@ -13,8 +13,8 @@ license.workspace = true
 bon = "3.6.4"
 
 [dev-dependencies]
-criterion = "0.5.1"
-flume = "0.11.0"
-rayon = "1.8.0"
-supercilex-tests = { version = "0.4.13", default-features = false, features = ["api"] }
-tokio = "1.35.0"
+criterion = "0.6.0"
+flume = "0.11.1"
+rayon = "1.10.0"
+supercilex-tests = { version = "0.4.18", default-features = false, features = ["api"] }
+tokio = "1.45.1"

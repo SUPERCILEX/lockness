@@ -1,8 +1,4 @@
-use std::{
-    mem::{ManuallyDrop, transmute},
-    ptr,
-    ptr::NonNull,
-};
+use std::{mem::ManuallyDrop, ptr, ptr::NonNull};
 
 use crate::freestanding_vec::FreestandingVec;
 
@@ -51,8 +47,10 @@ impl<F: FnOnce()> ClosureVec<F> {
     }
 
     pub const unsafe fn from_raw(ptr: *mut Self) -> Self {
-        Self {
-            data: FreestandingVec::from_raw(ptr.cast()),
+        unsafe {
+            Self {
+                data: FreestandingVec::from_raw(ptr.cast()),
+            }
         }
     }
 
@@ -165,7 +163,6 @@ mod tests {
             }
         });
 
-        let mut tasks = unsafe { transmute::<_, ClosureVec<fn()>>(tasks) };
         assert!(!tasks.pop_and_run());
         assert_eq!(666, count.get());
     }

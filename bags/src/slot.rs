@@ -1,16 +1,23 @@
-use std::sync::{
-    Arc,
-    atomic::AtomicPtr,
-    mpsc::{RecvError, SendError, TrySendError},
+use std::{
+    mem::MaybeUninit,
+    sync::{
+        Arc,
+        atomic::AtomicU32,
+        mpsc::{RecvError, SendError, TryRecvError, TrySendError},
+    },
 };
 
+use crate::cache_padded::CachePadded;
+
+#[must_use]
 pub fn mpsc<T>() -> (Sender<T>, Receiver<T>) {
     todo!()
 }
 
 #[derive(Debug)]
 struct Inner<T> {
-    data: AtomicPtr<T>,
+    status: CachePadded<AtomicU32>,
+    data: MaybeUninit<T>,
 }
 
 #[derive(Debug)]
@@ -43,6 +50,10 @@ impl<T> Clone for Sender<T> {
 
 impl<T> Receiver<T> {
     pub fn recv(&self) -> Result<T, RecvError> {
+        todo!()
+    }
+
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
         todo!()
     }
 }

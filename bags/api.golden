@@ -1,57 +1,72 @@
 pub mod lockness_bags
-pub enum lockness_bags::SlotOutcome<T>
-pub lockness_bags::SlotOutcome::Dead(core::option::Option<T>)
-pub lockness_bags::SlotOutcome::Empty
-pub lockness_bags::SlotOutcome::Ok(T)
-impl<T: core::clone::Clone> core::clone::Clone for lockness_bags::SlotOutcome<T>
-pub fn lockness_bags::SlotOutcome<T>::clone(&self) -> lockness_bags::SlotOutcome<T>
-impl<T: core::cmp::Eq> core::cmp::Eq for lockness_bags::SlotOutcome<T>
-impl<T: core::cmp::PartialEq> core::cmp::PartialEq<lockness_bags::SlotOutcome<T>> for lockness_bags::SlotOutcome<T>
-pub fn lockness_bags::SlotOutcome<T>::eq(&self, other: &lockness_bags::SlotOutcome<T>) -> bool
-impl<T: core::fmt::Debug> core::fmt::Debug for lockness_bags::SlotOutcome<T>
-pub fn lockness_bags::SlotOutcome<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<T: core::marker::Copy> core::marker::Copy for lockness_bags::SlotOutcome<T>
-impl<T> core::marker::StructuralEq for lockness_bags::SlotOutcome<T>
-impl<T> core::marker::StructuralPartialEq for lockness_bags::SlotOutcome<T>
-impl<T> core::marker::Send for lockness_bags::SlotOutcome<T> where T: core::marker::Send
-impl<T> core::marker::Sync for lockness_bags::SlotOutcome<T> where T: core::marker::Sync
-impl<T> core::marker::Unpin for lockness_bags::SlotOutcome<T> where T: core::marker::Unpin
-impl<T> core::panic::unwind_safe::RefUnwindSafe for lockness_bags::SlotOutcome<T> where T: core::panic::unwind_safe::RefUnwindSafe
-impl<T> core::panic::unwind_safe::UnwindSafe for lockness_bags::SlotOutcome<T> where T: core::panic::unwind_safe::UnwindSafe
-impl<T, U> core::convert::Into<U> for lockness_bags::SlotOutcome<T> where U: core::convert::From<T>
-pub fn lockness_bags::SlotOutcome<T>::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for lockness_bags::SlotOutcome<T> where U: core::convert::Into<T>
-pub type lockness_bags::SlotOutcome<T>::Error = core::convert::Infallible
-pub fn lockness_bags::SlotOutcome<T>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for lockness_bags::SlotOutcome<T> where U: core::convert::TryFrom<T>
-pub type lockness_bags::SlotOutcome<T>::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn lockness_bags::SlotOutcome<T>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for lockness_bags::SlotOutcome<T> where T: core::clone::Clone
-pub type lockness_bags::SlotOutcome<T>::Owned = T
-pub fn lockness_bags::SlotOutcome<T>::clone_into(&self, target: &mut T)
-pub fn lockness_bags::SlotOutcome<T>::to_owned(&self) -> T
-impl<T> core::any::Any for lockness_bags::SlotOutcome<T> where T: 'static + core::marker::Sized
-pub fn lockness_bags::SlotOutcome<T>::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for lockness_bags::SlotOutcome<T> where T: core::marker::Sized
-pub fn lockness_bags::SlotOutcome<T>::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for lockness_bags::SlotOutcome<T> where T: core::marker::Sized
-pub fn lockness_bags::SlotOutcome<T>::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for lockness_bags::SlotOutcome<T>
-pub fn lockness_bags::SlotOutcome<T>::from(t: T) -> T
-pub struct lockness_bags::SlotReceiver<T: lockness_bags::Allocated>
-impl<T: lockness_bags::Allocated> lockness_bags::SlotReceiver<T>
-pub fn lockness_bags::SlotReceiver<T>::recv(&self) -> lockness_bags::SlotOutcome<T>
-pub fn lockness_bags::SlotReceiver<T>::recv_deadline(&self, deadline: std::time::Instant) -> lockness_bags::SlotOutcome<T>
-pub fn lockness_bags::SlotReceiver<T>::recv_timeout(&self, timeout: core::time::Duration) -> lockness_bags::SlotOutcome<T>
-pub fn lockness_bags::SlotReceiver<T>::shutdown(self) -> core::option::Option<T>
-pub fn lockness_bags::SlotReceiver<T>::try_recv(&self) -> lockness_bags::SlotOutcome<T>
-impl<T: lockness_bags::Allocated> core::ops::drop::Drop for lockness_bags::SlotReceiver<T>
-pub fn lockness_bags::SlotReceiver<T>::drop(&mut self)
-impl<T> core::marker::Send for lockness_bags::SlotReceiver<T> where T: core::marker::Send + core::marker::Sync
-impl<T> core::marker::Sync for lockness_bags::SlotReceiver<T> where T: core::marker::Send + core::marker::Sync
-impl<T> core::marker::Unpin for lockness_bags::SlotReceiver<T>
+pub struct lockness_bags::MpmcReceiver<const N: usize, T>
+impl<const N: usize, T> lockness_bags::MpmcReceiver<N, T>
+pub fn lockness_bags::MpmcReceiver<N, T>::recv(&self) -> core::result::Result<arrayvec::arrayvec::ArrayVec<T, N>, std::sync::mpsc::RecvError>
+impl<const N: usize, T> core::marker::Freeze for lockness_bags::MpmcReceiver<N, T>
+impl<const N: usize, T> core::marker::Send for lockness_bags::MpmcReceiver<N, T> where T: core::marker::Sync + core::marker::Send
+impl<const N: usize, T> core::marker::Sync for lockness_bags::MpmcReceiver<N, T> where T: core::marker::Sync + core::marker::Send
+impl<const N: usize, T> core::marker::Unpin for lockness_bags::MpmcReceiver<N, T>
+impl<const N: usize, T> core::panic::unwind_safe::RefUnwindSafe for lockness_bags::MpmcReceiver<N, T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<const N: usize, T> core::panic::unwind_safe::UnwindSafe for lockness_bags::MpmcReceiver<N, T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<T, U> core::convert::Into<U> for lockness_bags::MpmcReceiver<N, T> where U: core::convert::From<T>
+pub fn lockness_bags::MpmcReceiver<N, T>::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for lockness_bags::MpmcReceiver<N, T> where U: core::convert::Into<T>
+pub type lockness_bags::MpmcReceiver<N, T>::Error = core::convert::Infallible
+pub fn lockness_bags::MpmcReceiver<N, T>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for lockness_bags::MpmcReceiver<N, T> where U: core::convert::TryFrom<T>
+pub type lockness_bags::MpmcReceiver<N, T>::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn lockness_bags::MpmcReceiver<N, T>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for lockness_bags::MpmcReceiver<N, T> where T: 'static + ?core::marker::Sized
+pub fn lockness_bags::MpmcReceiver<N, T>::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for lockness_bags::MpmcReceiver<N, T> where T: ?core::marker::Sized
+pub fn lockness_bags::MpmcReceiver<N, T>::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for lockness_bags::MpmcReceiver<N, T> where T: ?core::marker::Sized
+pub fn lockness_bags::MpmcReceiver<N, T>::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for lockness_bags::MpmcReceiver<N, T>
+pub fn lockness_bags::MpmcReceiver<N, T>::from(t: T) -> T
+pub struct lockness_bags::MpmcSender<const N: usize, T>
+impl<const N: usize, T> lockness_bags::MpmcSender<N, T>
+pub fn lockness_bags::MpmcSender<N, T>::send(&self, value: T) -> core::result::Result<(), std::sync::mpsc::SendError<T>>
+impl<const N: usize, T> core::clone::Clone for lockness_bags::MpmcSender<N, T>
+pub fn lockness_bags::MpmcSender<N, T>::clone(&self) -> Self
+impl<const N: usize, T> core::marker::Freeze for lockness_bags::MpmcSender<N, T>
+impl<const N: usize, T> core::marker::Send for lockness_bags::MpmcSender<N, T> where T: core::marker::Sync + core::marker::Send
+impl<const N: usize, T> core::marker::Sync for lockness_bags::MpmcSender<N, T> where T: core::marker::Sync + core::marker::Send
+impl<const N: usize, T> core::marker::Unpin for lockness_bags::MpmcSender<N, T>
+impl<const N: usize, T> core::panic::unwind_safe::RefUnwindSafe for lockness_bags::MpmcSender<N, T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<const N: usize, T> core::panic::unwind_safe::UnwindSafe for lockness_bags::MpmcSender<N, T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<T, U> core::convert::Into<U> for lockness_bags::MpmcSender<N, T> where U: core::convert::From<T>
+pub fn lockness_bags::MpmcSender<N, T>::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for lockness_bags::MpmcSender<N, T> where U: core::convert::Into<T>
+pub type lockness_bags::MpmcSender<N, T>::Error = core::convert::Infallible
+pub fn lockness_bags::MpmcSender<N, T>::try_from(value: U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for lockness_bags::MpmcSender<N, T> where U: core::convert::TryFrom<T>
+pub type lockness_bags::MpmcSender<N, T>::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn lockness_bags::MpmcSender<N, T>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for lockness_bags::MpmcSender<N, T> where T: core::clone::Clone
+pub type lockness_bags::MpmcSender<N, T>::Owned = T
+pub fn lockness_bags::MpmcSender<N, T>::clone_into(&self, target: &mut T)
+pub fn lockness_bags::MpmcSender<N, T>::to_owned(&self) -> T
+impl<T> core::any::Any for lockness_bags::MpmcSender<N, T> where T: 'static + ?core::marker::Sized
+pub fn lockness_bags::MpmcSender<N, T>::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for lockness_bags::MpmcSender<N, T> where T: ?core::marker::Sized
+pub fn lockness_bags::MpmcSender<N, T>::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for lockness_bags::MpmcSender<N, T> where T: ?core::marker::Sized
+pub fn lockness_bags::MpmcSender<N, T>::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for lockness_bags::MpmcSender<N, T> where T: core::clone::Clone
+pub unsafe fn lockness_bags::MpmcSender<N, T>::clone_to_uninit(&self, dest: *mut u8)
+impl<T> core::convert::From<T> for lockness_bags::MpmcSender<N, T>
+pub fn lockness_bags::MpmcSender<N, T>::from(t: T) -> T
+pub struct lockness_bags::SlotReceiver<T>
+impl<T> lockness_bags::SlotReceiver<T>
+pub fn lockness_bags::SlotReceiver<T>::recv(&self) -> core::result::Result<T, std::sync::mpsc::RecvError>
+pub fn lockness_bags::SlotReceiver<T>::try_recv(&self) -> core::result::Result<T, std::sync::mpsc::TryRecvError>
+impl<T> core::marker::Freeze for lockness_bags::SlotReceiver<T> where T: core::marker::Freeze
+impl<T> core::marker::Send for lockness_bags::SlotReceiver<T> where T: core::marker::Send
+impl<T> core::marker::Sync for lockness_bags::SlotReceiver<T> where T: core::marker::Sync
+impl<T> core::marker::Unpin for lockness_bags::SlotReceiver<T> where T: core::marker::Unpin
 impl<T> core::panic::unwind_safe::RefUnwindSafe for lockness_bags::SlotReceiver<T> where T: core::panic::unwind_safe::RefUnwindSafe
-impl<T> core::panic::unwind_safe::UnwindSafe for lockness_bags::SlotReceiver<T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<T> core::panic::unwind_safe::UnwindSafe for lockness_bags::SlotReceiver<T> where T: core::panic::unwind_safe::UnwindSafe
 impl<T, U> core::convert::Into<U> for lockness_bags::SlotReceiver<T> where U: core::convert::From<T>
 pub fn lockness_bags::SlotReceiver<T>::into(self) -> U
 impl<T, U> core::convert::TryFrom<U> for lockness_bags::SlotReceiver<T> where U: core::convert::Into<T>
@@ -60,24 +75,25 @@ pub fn lockness_bags::SlotReceiver<T>::try_from(value: U) -> core::result::Resul
 impl<T, U> core::convert::TryInto<U> for lockness_bags::SlotReceiver<T> where U: core::convert::TryFrom<T>
 pub type lockness_bags::SlotReceiver<T>::Error = <U as core::convert::TryFrom<T>>::Error
 pub fn lockness_bags::SlotReceiver<T>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> core::any::Any for lockness_bags::SlotReceiver<T> where T: 'static + core::marker::Sized
+impl<T> core::any::Any for lockness_bags::SlotReceiver<T> where T: 'static + ?core::marker::Sized
 pub fn lockness_bags::SlotReceiver<T>::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for lockness_bags::SlotReceiver<T> where T: core::marker::Sized
+impl<T> core::borrow::Borrow<T> for lockness_bags::SlotReceiver<T> where T: ?core::marker::Sized
 pub fn lockness_bags::SlotReceiver<T>::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for lockness_bags::SlotReceiver<T> where T: core::marker::Sized
+impl<T> core::borrow::BorrowMut<T> for lockness_bags::SlotReceiver<T> where T: ?core::marker::Sized
 pub fn lockness_bags::SlotReceiver<T>::borrow_mut(&mut self) -> &mut T
 impl<T> core::convert::From<T> for lockness_bags::SlotReceiver<T>
 pub fn lockness_bags::SlotReceiver<T>::from(t: T) -> T
-pub struct lockness_bags::SlotSender<T: lockness_bags::Allocated>
-impl<T: lockness_bags::Allocated> lockness_bags::SlotSender<T>
-pub fn lockness_bags::SlotSender<T>::shutdown(self) -> core::option::Option<T>
-pub fn lockness_bags::SlotSender<T>::try_send(&self, value: T) -> lockness_bags::SlotOutcome<T>
-impl<T: lockness_bags::Allocated> core::clone::Clone for lockness_bags::SlotSender<T>
+pub struct lockness_bags::SlotSender<T>
+impl<T> lockness_bags::SlotSender<T>
+pub fn lockness_bags::SlotSender<T>::send(&self, data: T) -> core::result::Result<(), std::sync::mpsc::SendError<T>>
+pub fn lockness_bags::SlotSender<T>::try_send(&self, data: T) -> core::result::Result<(), std::sync::mpsc::TrySendError<T>>
+impl<T: core::fmt::Debug> core::fmt::Debug for lockness_bags::SlotSender<T>
+pub fn lockness_bags::SlotSender<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<T> core::clone::Clone for lockness_bags::SlotSender<T>
 pub fn lockness_bags::SlotSender<T>::clone(&self) -> Self
-impl<T: lockness_bags::Allocated> core::ops::drop::Drop for lockness_bags::SlotSender<T>
-pub fn lockness_bags::SlotSender<T>::drop(&mut self)
-impl<T> core::marker::Send for lockness_bags::SlotSender<T> where T: core::marker::Send + core::marker::Sync
-impl<T> core::marker::Sync for lockness_bags::SlotSender<T> where T: core::marker::Send + core::marker::Sync
+impl<T> core::marker::Freeze for lockness_bags::SlotSender<T>
+impl<T> core::marker::Send for lockness_bags::SlotSender<T> where T: core::marker::Sync + core::marker::Send
+impl<T> core::marker::Sync for lockness_bags::SlotSender<T> where T: core::marker::Sync + core::marker::Send
 impl<T> core::marker::Unpin for lockness_bags::SlotSender<T>
 impl<T> core::panic::unwind_safe::RefUnwindSafe for lockness_bags::SlotSender<T> where T: core::panic::unwind_safe::RefUnwindSafe
 impl<T> core::panic::unwind_safe::UnwindSafe for lockness_bags::SlotSender<T> where T: core::panic::unwind_safe::RefUnwindSafe
@@ -93,15 +109,15 @@ impl<T> alloc::borrow::ToOwned for lockness_bags::SlotSender<T> where T: core::c
 pub type lockness_bags::SlotSender<T>::Owned = T
 pub fn lockness_bags::SlotSender<T>::clone_into(&self, target: &mut T)
 pub fn lockness_bags::SlotSender<T>::to_owned(&self) -> T
-impl<T> core::any::Any for lockness_bags::SlotSender<T> where T: 'static + core::marker::Sized
+impl<T> core::any::Any for lockness_bags::SlotSender<T> where T: 'static + ?core::marker::Sized
 pub fn lockness_bags::SlotSender<T>::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for lockness_bags::SlotSender<T> where T: core::marker::Sized
+impl<T> core::borrow::Borrow<T> for lockness_bags::SlotSender<T> where T: ?core::marker::Sized
 pub fn lockness_bags::SlotSender<T>::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for lockness_bags::SlotSender<T> where T: core::marker::Sized
+impl<T> core::borrow::BorrowMut<T> for lockness_bags::SlotSender<T> where T: ?core::marker::Sized
 pub fn lockness_bags::SlotSender<T>::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for lockness_bags::SlotSender<T> where T: core::clone::Clone
+pub unsafe fn lockness_bags::SlotSender<T>::clone_to_uninit(&self, dest: *mut u8)
 impl<T> core::convert::From<T> for lockness_bags::SlotSender<T>
 pub fn lockness_bags::SlotSender<T>::from(t: T) -> T
-pub trait lockness_bags::Allocated
-pub unsafe fn lockness_bags::Allocated::from_ptr(ptr: core::ptr::non_null::NonNull<()>) -> Self
-pub fn lockness_bags::Allocated::into_ptr(self) -> core::ptr::non_null::NonNull<()>
-pub fn lockness_bags::mpsc_slot<T: lockness_bags::Allocated>() -> (lockness_bags::SlotSender<T>, lockness_bags::SlotReceiver<T>)
+pub fn lockness_bags::mpmc<const NUM_BUFFERS: usize, T>() -> (lockness_bags::MpmcSender<NUM_BUFFERS, T>, lockness_bags::MpmcReceiver<NUM_BUFFERS, T>)
+pub fn lockness_bags::mpsc_slot<T>() -> (lockness_bags::SlotSender<T>, lockness_bags::SlotReceiver<T>)

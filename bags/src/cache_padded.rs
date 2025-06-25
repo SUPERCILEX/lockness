@@ -1,5 +1,7 @@
+use std::fmt;
+
 /// Adapted from
-/// https://github.com/crossbeam-rs/crossbeam/blob/983d56b6007ca4c22b56a665a7785f40f55c2a53/crossbeam-utils/src/cache_padded.rs
+/// <https://github.com/crossbeam-rs/crossbeam/blob/983d56b6007ca4c22b56a665a7785f40f55c2a53/crossbeam-utils/src/cache_padded.rs>
 
 #[derive(Clone, Copy, Default, Hash, PartialEq, Eq)]
 // Starting from Intel's Sandy Bridge, spatial prefetcher is now pulling pairs of 64-byte cache
@@ -89,3 +91,9 @@
     repr(align(64))
 )]
 pub struct CachePadded<T>(T);
+
+impl<T: fmt::Debug> fmt::Debug for CachePadded<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
