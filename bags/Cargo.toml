@@ -27,6 +27,6 @@ rstest = "0.25.0"
 supercilex-tests = "0.4.18"
 thingbuf = "0.1.6"
 
-#[[bench]]
-#name = "atomic_bag"
-#harness = false
+[[bench]]
+name = "atomic_bag"
+harness = false
