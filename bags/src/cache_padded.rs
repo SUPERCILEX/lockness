@@ -1,4 +1,7 @@
-use std::fmt;
+use std::{
+    fmt,
+    ops::{Deref, DerefMut},
+};
 
 /// Adapted from
 /// <https://github.com/crossbeam-rs/crossbeam/blob/983d56b6007ca4c22b56a665a7785f40f55c2a53/crossbeam-utils/src/cache_padded.rs>
@@ -90,7 +93,21 @@ use std::fmt;
     )),
     repr(align(64))
 )]
-pub struct CachePadded<T>(T);
+pub struct CachePadded<T>(pub T);
+
+impl<T> Deref for CachePadded<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for CachePadded<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 impl<T: fmt::Debug> fmt::Debug for CachePadded<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

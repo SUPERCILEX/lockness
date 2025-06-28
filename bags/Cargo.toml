@@ -11,6 +11,7 @@ license.workspace = true
 
 [dependencies]
 arrayvec = "0.7.6"
+bitflags = "2.9.1"
 rustix = { version = "1.0.7", features = ["thread", "linux_latest"] }
 
 [dev-dependencies]
@@ -22,6 +23,7 @@ crossbeam-deque = "0.8.6"
 crossbeam-queue = "0.3.12"
 flume = "0.11.1"
 ringbuf = "0.4.8"
+rstest = "0.25.0"
 supercilex-tests = "0.4.18"
 thingbuf = "0.1.6"
 

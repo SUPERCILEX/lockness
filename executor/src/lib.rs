@@ -1,6 +1,6 @@
 mod error;
 
-use std::{io, num::NonZeroUsize};
+use std::num::NonZeroUsize;
 
 use bon::Builder;
 pub use error::{Error, JoinError};

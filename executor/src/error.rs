@@ -10,10 +10,12 @@ pub enum Error<E> {
 pub struct JoinError(SyncWrapper<Box<dyn Any + Send + 'static>>);
 
 impl JoinError {
+    #[must_use]
     pub fn from_join_error(panic: Box<dyn Any + Send + 'static>) -> Self {
         Self(SyncWrapper::new(panic))
     }
 
+    #[must_use]
     pub fn into_inner(self) -> Box<dyn Any + Send + 'static> {
         self.0.into_inner()
     }
@@ -37,8 +39,8 @@ impl fmt::Debug for JoinError {
 impl std::error::Error for JoinError {}
 
 impl From<JoinError> for io::Error {
-    fn from(value: JoinError) -> io::Error {
-        io::Error::other(value)
+    fn from(value: JoinError) -> Self {
+        Self::other(value)
     }
 }
 
@@ -71,7 +73,7 @@ mod sync_wrapper {
     unsafe impl<T> Sync for SyncWrapper<T> {}
 
     impl<T> SyncWrapper<T> {
-        pub fn new(value: T) -> Self {
+        pub const fn new(value: T) -> Self {
             Self(value)
         }
 
