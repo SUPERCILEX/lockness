@@ -16,5 +16,5 @@ bon = "3.6.4"
 criterion = "0.6.0"
 flume = "0.11.1"
 rayon = "1.10.0"
-supercilex-tests = { version = "0.4.18", default-features = false, features = ["api"] }
+supercilex-tests = { version = "0.4.19", default-features = false, features = ["api"] }
 tokio = "1.45.1"

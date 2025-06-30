@@ -5,14 +5,25 @@ mod slot;
 use std::sync::atomic::{AtomicU32, AtomicU64};
 
 pub use mpmc::{Receiver as MpmcReceiver, Sender as MpmcSender, mpmc};
-use rustix::thread::{futex, futex::Flags};
+use rustix::{
+    io::Errno,
+    thread::{futex, futex::Flags},
+};
 pub use slot::{Receiver as SlotReceiver, Sender as SlotSender, mpsc as mpsc_slot};
 
 #[cold]
 #[inline(always)]
 #[allow(clippy::inline_always)]
 fn atomic_wake(word: &AtomicU32, waiters: u32) -> usize {
-    futex::wake(word, Flags::PRIVATE, waiters).unwrap()
+    futex::wake(word, Flags::PRIVATE, waiters).expect("Futex wake bug")
+}
+
+#[cold]
+fn atomic_sleep(word: &AtomicU32, expected: u32) {
+    match futex::wait(word, Flags::PRIVATE, expected, None) {
+        Ok(()) | Err(Errno::AGAIN | Errno::INTR) => (),
+        Err(e) => unreachable!("Futex wait bug: {e}"),
+    }
 }
 
 /// Uses the high bits of a u64 to make a u32 futex

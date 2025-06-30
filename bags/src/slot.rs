@@ -16,13 +16,13 @@ use std::{
 
 use bitflags::bitflags;
 
-use crate::{atomic_wake, cache_padded::CachePadded, u64_to_futex};
+use crate::{atomic_sleep, atomic_wake, cache_padded::CachePadded, u64_to_futex};
 
 #[must_use]
 pub fn mpsc<T>() -> (Sender<T>, Receiver<T>) {
     let inner = Arc::new(Inner {
         send: CachePadded(AtomicU64::new(SendStatus::default().bits())),
-        receive: AtomicU32::new(ReceiveStatus::default().bits()),
+        recv: AtomicU32::new(RecvStatus::default().bits()),
         num_senders: AtomicU32::new(1),
         slot: UnsafeCell::new(MaybeUninit::uninit()),
     });
@@ -37,7 +37,7 @@ pub fn mpsc<T>() -> (Sender<T>, Receiver<T>) {
 #[derive(Debug)]
 struct Inner<T> {
     send: CachePadded<AtomicU64>,
-    receive: AtomicU32,
+    recv: AtomicU32,
     num_senders: AtomicU32,
     slot: UnsafeCell<MaybeUninit<T>>,
 }
@@ -66,7 +66,7 @@ bitflags! {
 }
 
 impl SendStatus {
-    const ABORT: u64 = 1 << 63;
+    const ABORT: u64 = (SendStatus::all().bits() + 1) >> 1;
 
     const fn reservations(self) -> u64 {
         self.difference(Self::all()).bits()
@@ -75,7 +75,7 @@ impl SendStatus {
 
 bitflags! {
     #[derive(Copy, Clone, Default, Debug)]
-    pub struct ReceiveStatus: u32 {
+    pub struct RecvStatus: u32 {
         const COMMIT = 1 << 0;
         const SLEEPING = 1 << 1;
         const SENDER_DEAD = 1 << 2;
@@ -86,13 +86,13 @@ impl<T> Drop for Inner<T> {
     fn drop(&mut self) {
         let Self {
             send: _,
-            receive,
+            recv,
             num_senders: _,
             slot,
         } = self;
 
         let has_value =
-            ReceiveStatus::from_bits_retain(receive.load(Acquire)).contains(ReceiveStatus::COMMIT);
+            RecvStatus::from_bits_retain(recv.load(Acquire)).contains(RecvStatus::COMMIT);
         if has_value {
             let slot = slot.get_mut();
             unsafe {
@@ -103,43 +103,70 @@ impl<T> Drop for Inner<T> {
 }
 
 impl<T> Sender<T> {
-    pub fn send(&self, data: T) -> Result<(), SendError<T>> {
-        todo!()
+    pub fn send(&self, mut data: T) -> Result<(), SendError<T>> {
+        loop {
+            match self.try_send_(data) {
+                Ok(()) => return Ok(()),
+                Err((TrySendError::Full(restored), expected)) => {
+                    data = restored;
+
+                    let send = &self.inner.send;
+                    send.fetch_or(SendStatus::SLEEPING.bits(), Relaxed);
+                    let expected = (expected | SendStatus::SLEEPING).bits();
+                    atomic_sleep(
+                        u64_to_futex(send),
+                        (expected >> u32::BITS).try_into().unwrap(),
+                    );
+
+                    // Pass the torch. If we've been woken up, it means we previously went to sleep
+                    // and thus anybody attempting to write a value alongside us might have also
+                    // gone to sleep. As long as each woken sleeper notes that somebody else might
+                    // still be sleeping, we'll eventually wake everybody up at the cost of one
+                    // spurious WAKE syscall at the end of the chain.
+                    send.fetch_or(SendStatus::SLEEPING.bits(), Relaxed);
+                }
+                Err((TrySendError::Disconnected(data), _)) => return Err(SendError(data)),
+            }
+        }
     }
 
     pub fn try_send(&self, data: T) -> Result<(), TrySendError<T>> {
+        self.try_send_(data).map_err(|(v, _)| v)
+    }
+
+    #[inline]
+    fn try_send_(&self, data: T) -> Result<(), (TrySendError<T>, SendStatus)> {
         let Inner {
             send,
-            receive,
+            recv,
             num_senders: _,
             slot,
         } = &*self.inner;
 
         let send = SendStatus::from_bits_retain(send.fetch_add(1, Relaxed));
         if send.contains(SendStatus::RECEIVER_DEAD) {
-            return Err(TrySendError::Disconnected(data));
+            return Err((TrySendError::Disconnected(data), send));
         }
         {
             let reservations = send.reservations();
             if reservations >= SendStatus::ABORT {
-                // We would like to use fetch_or, but x86 is a fat pile of shit.
-                // Unlike good instructions sets (RISC-V), atomic bit-wise
-                // operations in x86 can only use the bit operated upon
-                // (by virtue of https://en.wikipedia.org/wiki/Bit_Test instructions)
-                // or else face a cmpxchg loop. However, xadd and xsub can atomically return the
-                // full previous value.
+                // We would like to use fetch_or, but x86 is a fat pile of shit. Unlike good
+                // instructions sets (RISC-V), atomic bit-wise operations in x86 can only use
+                // the bit operated upon (by virtue of https://en.wikipedia.org/wiki/Bit_Test
+                // instructions) or else face a cmpxchg loop. However, xadd and xsub can
+                // atomically return the full previous value.
                 //
                 // We therefore implement a hack wherein the RESERVE bit is represented as any
                 // unknown bits being set. Unfortunately, this will eventually cause us to wrap
                 // around leading to the following race:
                 // 1. Thread A reserves the slot, but hasn't committed it yet.
                 // 2. Thread B gets a wrapped reservation and smashes the slot.
-                // If the value is multiple words and you interleave the threads evilly, you
-                // can get a torn value. Of course with a u64 this will never happen but eh.
+                // If the value is multiple words and you interleave the threads evilly, you can
+                // get a torn value. Of course with a u64 this will never happen but eh.
                 ran_out_of_address_space();
             }
             if reservations > 0 {
-                return Err(TrySendError::Full(data));
+                return Err((TrySendError::Full(data), send));
             }
         }
 
@@ -154,12 +181,12 @@ impl<T> Sender<T> {
                 ptr::write(slot, data);
             }
         }
-        let receiver_sleeping = ReceiveStatus::from_bits_retain(receive.load(Relaxed))
-            .contains(ReceiveStatus::SLEEPING);
-        receive.store(ReceiveStatus::COMMIT.bits(), Release);
+        let receiver_sleeping =
+            RecvStatus::from_bits_retain(recv.swap(RecvStatus::COMMIT.bits(), Release))
+                .contains(RecvStatus::SLEEPING);
 
         if receiver_sleeping {
-            atomic_wake(receive, 1);
+            atomic_wake(recv, 1);
         }
         Ok(())
     }
@@ -168,7 +195,9 @@ impl<T> Sender<T> {
 impl<T> Clone for Sender<T> {
     fn clone(&self) -> Self {
         let Self { inner } = self;
-        inner.num_senders.fetch_add(1, Relaxed);
+        if inner.num_senders.fetch_add(1, Relaxed) > u32::MAX / 2 {
+            too_many_senders();
+        }
         Self {
             inner: inner.clone(),
         }
@@ -179,7 +208,7 @@ impl<T> Drop for Sender<T> {
     fn drop(&mut self) {
         let Inner {
             send: _,
-            receive,
+            recv,
             num_senders,
             slot: _,
         } = &*self.inner;
@@ -188,39 +217,55 @@ impl<T> Drop for Sender<T> {
             return;
         }
 
-        let receiver_sleeping = ReceiveStatus::from_bits_retain(
+        let receiver_sleeping = RecvStatus::from_bits_retain(
             // As noted in my other comment x86 sucks so this will generate a cmpxchg loop, but
-            // I guess that's ok since we're in a drop impl.
-            receive.fetch_or(ReceiveStatus::SENDER_DEAD.bits(), Relaxed),
+            // I guess that's ok since we're in a drop impl. We can't use the swap trick from
+            // Receiver::drop because the COMMIT bit can't be changed.
+            recv.fetch_or(RecvStatus::SENDER_DEAD.bits(), Relaxed),
         )
-        .contains(ReceiveStatus::SLEEPING);
+        .contains(RecvStatus::SLEEPING);
         if receiver_sleeping {
-            atomic_wake(receive, u32::MAX);
+            atomic_wake(recv, u32::MAX);
         }
     }
 }
 
 impl<T> Receiver<T> {
     pub fn recv(&self) -> Result<T, RecvError> {
-        todo!()
+        loop {
+            match self.try_recv_() {
+                Ok(v) => return Ok(v),
+                Err((TryRecvError::Empty, expected)) => {
+                    let recv = &self.inner.recv;
+                    recv.fetch_or(RecvStatus::SLEEPING.bits(), Relaxed);
+                    atomic_sleep(recv, (expected | RecvStatus::SLEEPING).bits());
+                }
+                Err((TryRecvError::Disconnected, _)) => return Err(RecvError),
+            }
+        }
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
+        self.try_recv_().map_err(|(v, _)| v)
+    }
+
+    #[inline]
+    fn try_recv_(&self) -> Result<T, (TryRecvError, RecvStatus)> {
         let Inner {
             send,
-            receive,
+            recv,
             num_senders: _,
             slot,
         } = &*self.inner;
 
-        let receive_ = ReceiveStatus::from_bits_retain(receive.load(Acquire));
-        if !receive_.contains(ReceiveStatus::COMMIT) {
-            if receive_.contains(ReceiveStatus::SENDER_DEAD) {
-                return Err(TryRecvError::Disconnected);
+        let recv_ = RecvStatus::from_bits_retain(recv.load(Acquire));
+        if !recv_.contains(RecvStatus::COMMIT) {
+            if recv_.contains(RecvStatus::SENDER_DEAD) {
+                return Err((TryRecvError::Disconnected, recv_));
             }
-            return Err(TryRecvError::Empty);
+            return Err((TryRecvError::Empty, recv_));
         }
-        receive.fetch_and(ReceiveStatus::SENDER_DEAD.bits(), Relaxed);
+        recv.fetch_and(RecvStatus::SENDER_DEAD.bits(), Relaxed);
 
         let value = {
             let slot = slot.get();
@@ -253,14 +298,14 @@ impl<T> Drop for Receiver<T> {
     fn drop(&mut self) {
         let Inner {
             send,
-            receive: _,
+            recv: _,
             num_senders: _,
             slot: _,
         } = &*self.inner;
 
         let sender_sleeping =
-            SendStatus::from_bits_retain(send.load(Relaxed)).contains(SendStatus::SLEEPING);
-        send.fetch_or(SendStatus::RECEIVER_DEAD.bits(), Relaxed);
+            SendStatus::from_bits_retain(send.swap(SendStatus::RECEIVER_DEAD.bits(), Relaxed))
+                .contains(SendStatus::SLEEPING);
 
         if sender_sleeping {
             atomic_wake(u64_to_futex(send), u32::MAX);
@@ -271,6 +316,12 @@ impl<T> Drop for Receiver<T> {
 #[cold]
 fn ran_out_of_address_space() {
     eprintln!("Slot attempted to send a value unsuccessfully too many times, aborting.");
+    abort()
+}
+
+#[cold]
+fn too_many_senders() {
+    eprintln!("Too many senders, aborting.");
     abort()
 }
 
@@ -313,6 +364,7 @@ mod tests {
 
     #[rstest]
     #[case(send_polyfill::<Box<i32>>, recv_polyfill::<Box<i32>>)]
+    #[case(Sender::<Box<i32>>::send, Receiver::<Box<i32>>::recv)]
     fn drops(#[case] send: SendFn<Box<i32>>, #[case] recv: RecvFn<Box<i32>>) {
         {
             let (_sender, _receiver) = mpsc_slot::<Box<i32>>();
@@ -355,6 +407,7 @@ mod tests {
 
     #[rstest]
     #[case(send_polyfill::<Box<usize>>, recv_polyfill::<Box<usize>>)]
+    #[case(Sender::<Box<usize>>::send, Receiver::<Box<usize>>::recv)]
     fn basic(#[case] send: SendFn<Box<usize>>, #[case] recv: RecvFn<Box<usize>>) {
         let (sender, receiver) = mpsc_slot();
         let senders = (0..3)
@@ -388,6 +441,7 @@ mod tests {
 
     #[rstest]
     #[case(send_polyfill::<Vec<i32>>, recv_polyfill::<Vec<i32>>)]
+    #[case(Sender::<Vec<i32>>::send, Receiver::<Vec<i32>>::recv)]
     fn ping_pong(#[case] send: SendFn<Vec<i32>>, #[case] recv: RecvFn<Vec<i32>>) {
         let (ping_sender, pong_receiver) = mpsc_slot();
         let (pong_sender, ping_receiver) = mpsc_slot();
