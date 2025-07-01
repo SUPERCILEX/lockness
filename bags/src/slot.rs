@@ -6,7 +6,7 @@ use std::{
     sync::{
         Arc,
         atomic::{
-            AtomicU32, AtomicU64,
+            AtomicU32,
             Ordering::{Acquire, Relaxed, Release},
             fence,
         },
@@ -16,12 +16,12 @@ use std::{
 
 use bitflags::bitflags;
 
-use crate::{atomic_sleep, atomic_wake, cache_padded::CachePadded, u64_to_futex};
+use crate::{atomic_sleep, atomic_wake, cache_padded::CachePadded};
 
 #[must_use]
 pub fn mpsc<T>() -> (Sender<T>, Receiver<T>) {
     let inner = Arc::new(Inner {
-        send: CachePadded(AtomicU64::new(SendStatus::default().bits())),
+        send: CachePadded(SendStatusAtomicU::new(SendStatus::default().bits())),
         recv: AtomicU32::new(RecvStatus::default().bits()),
         num_senders: AtomicU32::new(1),
         slot: UnsafeCell::new(MaybeUninit::uninit()),
@@ -36,7 +36,7 @@ pub fn mpsc<T>() -> (Sender<T>, Receiver<T>) {
 
 #[derive(Debug)]
 struct Inner<T> {
-    send: CachePadded<AtomicU64>,
+    send: CachePadded<SendStatusAtomicU>,
     recv: AtomicU32,
     num_senders: AtomicU32,
     slot: UnsafeCell<MaybeUninit<T>>,
@@ -56,22 +56,37 @@ unsafe impl<T: Send> Send for Sender<T> {}
 unsafe impl<T> Sync for Sender<T> {}
 unsafe impl<T: Send> Send for Receiver<T> {}
 
+#[cfg(not(miri))]
+type SendStatusU = u64;
+#[cfg(not(miri))]
+type SendStatusAtomicU = std::sync::atomic::AtomicU64;
+
+#[cfg(miri)]
+type SendStatusU = u32;
+#[cfg(miri)]
+type SendStatusAtomicU = AtomicU32;
+
 bitflags! {
     #[derive(Copy, Clone, Default, Debug)]
-    pub struct SendStatus: u64 {
-        const RECEIVER_DEAD = 1 << 63;
-        const SLEEPING = 1 << 62;
+    pub struct SendStatus: SendStatusU {
+        const RECEIVER_DEAD = 1 << (SendStatusU::BITS - 1);
+        const SLEEPING = 1 << (SendStatusU::BITS - 2);
         // RESERVE is implicitly encoded as any other bit
     }
 }
 
 impl SendStatus {
-    const ABORT: u64 = {
+    #[cfg(not(miri))]
+    const ABORT: SendStatusU = {
         let all = Self::all().bits();
         (all & (!all + 1)) >> 1
     };
+    #[cfg(miri)]
+    // We don't need this nonsense on ISAs that use fetch_or, so use MAX to optimize
+    // out the > check in try_send
+    const ABORT: SendStatusU = SendStatusU::MAX;
 
-    const fn reservations(self) -> u64 {
+    const fn reservations(self) -> SendStatusU {
         self.difference(Self::all()).bits()
     }
 }
@@ -154,10 +169,13 @@ impl<T> Sender<T> {
                         expected | SendStatus::SLEEPING
                     };
 
+                    #[cfg(not(miri))]
                     atomic_sleep(
-                        u64_to_futex(send),
+                        crate::u64_to_futex(send),
                         (expected.bits() >> u32::BITS).try_into().unwrap(),
                     );
+                    #[cfg(miri)]
+                    atomic_sleep(send, expected.bits());
 
                     // Pass the torch. If we've been woken up, it means we previously went to sleep
                     // and thus anybody attempting to write a value alongside us might have also
@@ -181,9 +199,13 @@ impl<T> Sender<T> {
         } = &*self.inner;
 
         {
+            #[cfg(not(miri))]
             let send = SendStatus::from_bits_retain(send.fetch_add(1, Relaxed));
+            #[cfg(miri)]
+            let send = SendStatus::from_bits_retain(send.fetch_or(1, Relaxed));
             {
                 let reservations = send.reservations();
+                #[allow(clippy::absurd_extreme_comparisons)]
                 if reservations > SendStatus::ABORT {
                     // We would like to use fetch_or, but x86 is a fat pile of shit. Unlike good
                     // instructions sets (RISC-V), atomic bit-wise operations in x86 can only use
@@ -341,7 +363,10 @@ impl<T> Receiver<T> {
                 .contains(SendStatus::SLEEPING);
 
         if sender_sleeping {
-            atomic_wake(u64_to_futex(send), 1);
+            #[cfg(not(miri))]
+            atomic_wake(crate::u64_to_futex(send), 1);
+            #[cfg(miri)]
+            atomic_wake(send, 1);
         }
 
         Ok(value)
@@ -362,7 +387,10 @@ impl<T> Drop for Receiver<T> {
                 .contains(SendStatus::SLEEPING);
 
         if sender_sleeping {
-            atomic_wake(u64_to_futex(send), u32::MAX);
+            #[cfg(not(miri))]
+            atomic_wake(crate::u64_to_futex(send), u32::MAX);
+            #[cfg(miri)]
+            atomic_wake(send, u32::MAX);
         }
     }
 }
