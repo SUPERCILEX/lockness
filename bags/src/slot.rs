@@ -66,7 +66,10 @@ bitflags! {
 }
 
 impl SendStatus {
-    const ABORT: u64 = (Self::all().bits() + 1) >> 1;
+    const ABORT: u64 = {
+        let all = Self::all().bits();
+        (all & (!all + 1)) >> 1
+    };
 
     const fn reservations(self) -> u64 {
         self.difference(Self::all()).bits()
@@ -112,10 +115,13 @@ impl<T> Sender<T> {
 
                     let send = &self.inner.send;
                     let expected = {
-                        let mut spin = 100;
+                        let mut spin = 32;
                         loop {
                             std::hint::spin_loop();
 
+                            // Here and below we manually replicate what try_send does but without
+                            // calling fetch_add to avoid spamming the cache network with pointless
+                            // writes
                             let send = SendStatus::from_bits_retain(send.load(Relaxed));
                             if send.reservations() == 0 {
                                 continue 'outer;
@@ -176,12 +182,9 @@ impl<T> Sender<T> {
 
         {
             let send = SendStatus::from_bits_retain(send.fetch_add(1, Relaxed));
-            if send.contains(SendStatus::RECEIVER_DEAD) {
-                return Err(TrySendError::Disconnected(data));
-            }
             {
                 let reservations = send.reservations();
-                if reservations >= SendStatus::ABORT {
+                if reservations > SendStatus::ABORT {
                     // We would like to use fetch_or, but x86 is a fat pile of shit. Unlike good
                     // instructions sets (RISC-V), atomic bit-wise operations in x86 can only use
                     // the bit operated upon (by virtue of https://en.wikipedia.org/wiki/Bit_Test
@@ -194,8 +197,15 @@ impl<T> Sender<T> {
                     // 1. Thread A reserves the slot, but hasn't committed it yet.
                     // 2. Thread B gets a wrapped reservation and smashes the slot.
                     // If the value is multiple words and you interleave the threads evilly, you can
-                    // get a torn value. Of course with a u64 this will never happen but eh.
-                    ran_out_of_address_space();
+                    // get a torn value (data race). In the simpler case where thread A has
+                    // committed, we have a memory leak or race with the receiver. Of course with a
+                    // u64 this will never happen but it's good to have the check I guess.
+                    abort_with_message(
+                        "Slot attempted to send a value unsuccessfully too many times, aborting.",
+                    );
+                }
+                if send.contains(SendStatus::RECEIVER_DEAD) {
+                    return Err(TrySendError::Disconnected(data));
                 }
                 if reservations > 0 {
                     return Err(TrySendError::Full(data));
@@ -208,7 +218,7 @@ impl<T> Sender<T> {
             let data = MaybeUninit::new(data);
             // Synchronize on the "send" reservation to write new data after the receiver
             // has read the previous value.
-            // Also ensures we load "receive" after it was published.
+            // Also ensures we load "recv" after it was published.
             fence(Acquire);
             unsafe {
                 ptr::write(slot, data);
@@ -229,7 +239,7 @@ impl<T> Clone for Sender<T> {
     fn clone(&self) -> Self {
         let Self { inner } = self;
         if inner.num_senders.fetch_add(1, Relaxed) > u32::MAX / 2 {
-            too_many_senders();
+            abort_with_message("Too many senders, aborting.");
         }
         Self {
             inner: inner.clone(),
@@ -307,13 +317,15 @@ impl<T> Receiver<T> {
                 return Err(TryRecvError::Empty);
             }
         }
+        // If the sender is dead, we need to consume the last value while preserving the
+        // SENDER_DEAD flag.
         recv.fetch_and(RecvStatus::SENDER_DEAD.bits(), Relaxed);
 
         let value = {
             let slot = slot.get();
             let data = unsafe { ptr::read(slot) };
             // Synchronize on the "send" reservations to read data before the sender
-            // overwrites it. Also ensures that "receive" was written to before
+            // overwrites it. Also ensures that "recv" was written to before
             // publishing "send". Alternatively, we could use amoswap (and
             // restore the DEAD state), but splitting the swap allows the store to be
             // buffered.
@@ -325,7 +337,7 @@ impl<T> Receiver<T> {
             unsafe { data.assume_init() }
         };
         let sender_sleeping =
-            SendStatus::from_bits_retain(send.swap(SendStatus::default().bits(), Release))
+            SendStatus::from_bits_retain(send.swap(SendStatus::default().bits(), Relaxed))
                 .contains(SendStatus::SLEEPING);
 
         if sender_sleeping {
@@ -356,14 +368,8 @@ impl<T> Drop for Receiver<T> {
 }
 
 #[cold]
-fn ran_out_of_address_space() {
-    eprintln!("Slot attempted to send a value unsuccessfully too many times, aborting.");
-    abort()
-}
-
-#[cold]
-fn too_many_senders() {
-    eprintln!("Too many senders, aborting.");
+fn abort_with_message(m: &str) {
+    eprintln!("{m}");
     abort()
 }
 
@@ -457,7 +463,7 @@ mod tests {
                 thread::spawn({
                     let sender = sender.clone();
                     move || {
-                        for i in 0..10 {
+                        for i in 0..1000 {
                             send(&sender, Box::new(i)).unwrap()
                         }
                     }
@@ -466,7 +472,7 @@ mod tests {
             .collect::<Vec<_>>();
         drop(sender);
         thread::spawn(move || {
-            let mut counts = [0; 10];
+            let mut counts = [0; 1000];
             while let Ok(i) = recv(&receiver) {
                 counts[*i] += 1;
             }
@@ -490,7 +496,7 @@ mod tests {
 
         let ping = thread::spawn(move || {
             let mut data = Vec::new();
-            for i in 0..100 {
+            for i in 0..1000 {
                 data.push(i);
                 send(&ping_sender, data).unwrap();
                 data = recv(&ping_receiver).unwrap();
@@ -507,7 +513,7 @@ mod tests {
         let actual = ping.join().unwrap();
         let () = pong.join().unwrap();
 
-        let expected: Vec<_> = (0..100).flat_map(|i| [i, i]).collect();
+        let expected: Vec<_> = (0..1000).flat_map(|i| [i, i]).collect();
 
         assert_eq!(expected, actual);
     }
