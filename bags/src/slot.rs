@@ -66,7 +66,7 @@ bitflags! {
 }
 
 impl SendStatus {
-    const ABORT: u64 = (SendStatus::all().bits() + 1) >> 1;
+    const ABORT: u64 = (Self::all().bits() + 1) >> 1;
 
     const fn reservations(self) -> u64 {
         self.difference(Self::all()).bits()
@@ -104,18 +104,53 @@ impl<T> Drop for Inner<T> {
 
 impl<T> Sender<T> {
     pub fn send(&self, mut data: T) -> Result<(), SendError<T>> {
-        loop {
-            match self.try_send_(data) {
+        'outer: loop {
+            match self.try_send(data) {
                 Ok(()) => return Ok(()),
-                Err((TrySendError::Full(restored), expected)) => {
+                Err(TrySendError::Full(restored)) => {
                     data = restored;
 
                     let send = &self.inner.send;
-                    send.fetch_or(SendStatus::SLEEPING.bits(), Relaxed);
-                    let expected = (expected | SendStatus::SLEEPING).bits();
+                    let expected = {
+                        let mut spin = 100;
+                        loop {
+                            std::hint::spin_loop();
+
+                            let send = SendStatus::from_bits_retain(send.load(Relaxed));
+                            if send.reservations() == 0 {
+                                continue 'outer;
+                            }
+                            if send.contains(SendStatus::RECEIVER_DEAD) {
+                                return Err(SendError(data));
+                            }
+
+                            if spin == 0 {
+                                break send;
+                            }
+                            spin -= 1;
+                        }
+                    };
+
+                    let expected = if expected.contains(SendStatus::SLEEPING) {
+                        expected
+                    } else {
+                        // Again this fetch_or is sad on x86, but we're about to sleep so I guess
+                        // it's fine
+                        let expected = SendStatus::from_bits_retain(
+                            send.fetch_or(SendStatus::SLEEPING.bits(), Relaxed),
+                        );
+                        if expected.reservations() == 0 {
+                            continue 'outer;
+                        }
+                        if expected.contains(SendStatus::RECEIVER_DEAD) {
+                            return Err(SendError(data));
+                        }
+                        expected | SendStatus::SLEEPING
+                    };
+
                     atomic_sleep(
                         u64_to_futex(send),
-                        (expected >> u32::BITS).try_into().unwrap(),
+                        (expected.bits() >> u32::BITS).try_into().unwrap(),
                     );
 
                     // Pass the torch. If we've been woken up, it means we previously went to sleep
@@ -125,17 +160,13 @@ impl<T> Sender<T> {
                     // spurious WAKE syscall at the end of the chain.
                     send.fetch_or(SendStatus::SLEEPING.bits(), Relaxed);
                 }
-                Err((TrySendError::Disconnected(data), _)) => return Err(SendError(data)),
+                Err(TrySendError::Disconnected(data)) => return Err(SendError(data)),
             }
         }
     }
 
-    pub fn try_send(&self, data: T) -> Result<(), TrySendError<T>> {
-        self.try_send_(data).map_err(|(v, _)| v)
-    }
-
     #[inline]
-    fn try_send_(&self, data: T) -> Result<(), (TrySendError<T>, SendStatus)> {
+    pub fn try_send(&self, data: T) -> Result<(), TrySendError<T>> {
         let Inner {
             send,
             recv,
@@ -143,30 +174,32 @@ impl<T> Sender<T> {
             slot,
         } = &*self.inner;
 
-        let send = SendStatus::from_bits_retain(send.fetch_add(1, Relaxed));
-        if send.contains(SendStatus::RECEIVER_DEAD) {
-            return Err((TrySendError::Disconnected(data), send));
-        }
         {
-            let reservations = send.reservations();
-            if reservations >= SendStatus::ABORT {
-                // We would like to use fetch_or, but x86 is a fat pile of shit. Unlike good
-                // instructions sets (RISC-V), atomic bit-wise operations in x86 can only use
-                // the bit operated upon (by virtue of https://en.wikipedia.org/wiki/Bit_Test
-                // instructions) or else face a cmpxchg loop. However, xadd and xsub can
-                // atomically return the full previous value.
-                //
-                // We therefore implement a hack wherein the RESERVE bit is represented as any
-                // unknown bits being set. Unfortunately, this will eventually cause us to wrap
-                // around leading to the following race:
-                // 1. Thread A reserves the slot, but hasn't committed it yet.
-                // 2. Thread B gets a wrapped reservation and smashes the slot.
-                // If the value is multiple words and you interleave the threads evilly, you can
-                // get a torn value. Of course with a u64 this will never happen but eh.
-                ran_out_of_address_space();
+            let send = SendStatus::from_bits_retain(send.fetch_add(1, Relaxed));
+            if send.contains(SendStatus::RECEIVER_DEAD) {
+                return Err(TrySendError::Disconnected(data));
             }
-            if reservations > 0 {
-                return Err((TrySendError::Full(data), send));
+            {
+                let reservations = send.reservations();
+                if reservations >= SendStatus::ABORT {
+                    // We would like to use fetch_or, but x86 is a fat pile of shit. Unlike good
+                    // instructions sets (RISC-V), atomic bit-wise operations in x86 can only use
+                    // the bit operated upon (by virtue of https://en.wikipedia.org/wiki/Bit_Test
+                    // instructions) or else face a cmpxchg loop. However, xadd and xsub can
+                    // atomically return the full previous value.
+                    //
+                    // We therefore implement a hack wherein the RESERVE bit is represented as any
+                    // unknown bits being set. Unfortunately, this will eventually cause us to wrap
+                    // around leading to the following race:
+                    // 1. Thread A reserves the slot, but hasn't committed it yet.
+                    // 2. Thread B gets a wrapped reservation and smashes the slot.
+                    // If the value is multiple words and you interleave the threads evilly, you can
+                    // get a torn value. Of course with a u64 this will never happen but eh.
+                    ran_out_of_address_space();
+                }
+                if reservations > 0 {
+                    return Err(TrySendError::Full(data));
+                }
             }
         }
 
@@ -232,38 +265,47 @@ impl<T> Drop for Sender<T> {
 
 impl<T> Receiver<T> {
     pub fn recv(&self) -> Result<T, RecvError> {
+        let mut i = 0;
         loop {
-            match self.try_recv_() {
+            match self.try_recv() {
                 Ok(v) => return Ok(v),
-                Err((TryRecvError::Empty, expected)) => {
+                Err(TryRecvError::Empty) => {
+                    if i < 100 {
+                        i += 1;
+                        std::hint::spin_loop();
+                        continue;
+                    }
+                    i = 0;
+
                     let recv = &self.inner.recv;
-                    recv.fetch_or(RecvStatus::SLEEPING.bits(), Relaxed);
-                    atomic_sleep(recv, (expected | RecvStatus::SLEEPING).bits());
+                    if recv.fetch_or(RecvStatus::SLEEPING.bits(), Relaxed)
+                        != RecvStatus::default().bits()
+                    {
+                        continue;
+                    }
+                    atomic_sleep(recv, RecvStatus::SLEEPING.bits());
                 }
-                Err((TryRecvError::Disconnected, _)) => return Err(RecvError),
+                Err(TryRecvError::Disconnected) => return Err(RecvError),
             }
         }
     }
 
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        self.try_recv_().map_err(|(v, _)| v)
-    }
-
     #[inline]
-    fn try_recv_(&self) -> Result<T, (TryRecvError, RecvStatus)> {
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
         let Inner {
             send,
             recv,
             num_senders: _,
             slot,
         } = &*self.inner;
-
-        let recv_ = RecvStatus::from_bits_retain(recv.load(Acquire));
-        if !recv_.contains(RecvStatus::COMMIT) {
-            if recv_.contains(RecvStatus::SENDER_DEAD) {
-                return Err((TryRecvError::Disconnected, recv_));
+        {
+            let recv = RecvStatus::from_bits_retain(recv.load(Acquire));
+            if !recv.contains(RecvStatus::COMMIT) {
+                if recv.contains(RecvStatus::SENDER_DEAD) {
+                    return Err(TryRecvError::Disconnected);
+                }
+                return Err(TryRecvError::Empty);
             }
-            return Err((TryRecvError::Empty, recv_));
         }
         recv.fetch_and(RecvStatus::SENDER_DEAD.bits(), Relaxed);
 
@@ -283,8 +325,8 @@ impl<T> Receiver<T> {
             unsafe { data.assume_init() }
         };
         let sender_sleeping =
-            SendStatus::from_bits_retain(send.load(Relaxed)).contains(SendStatus::SLEEPING);
-        send.store(SendStatus::default().bits(), Release);
+            SendStatus::from_bits_retain(send.swap(SendStatus::default().bits(), Release))
+                .contains(SendStatus::SLEEPING);
 
         if sender_sleeping {
             atomic_wake(u64_to_futex(send), 1);
