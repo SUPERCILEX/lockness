@@ -81,10 +81,6 @@ impl SendStatus {
         let all = Self::all().bits();
         (all & (!all + 1)) >> 1
     };
-    #[cfg(miri)]
-    // We don't need this nonsense on ISAs that use fetch_or, so use MAX to optimize
-    // out the > check in try_send
-    const ABORT: SendStatusU = SendStatusU::MAX;
 
     const fn reservations(self) -> SendStatusU {
         self.difference(Self::all()).bits()
@@ -205,7 +201,7 @@ impl<T> Sender<T> {
             let send = SendStatus::from_bits_retain(send.fetch_or(1, Relaxed));
             {
                 let reservations = send.reservations();
-                #[allow(clippy::absurd_extreme_comparisons)]
+                #[cfg(not(miri))]
                 if reservations > SendStatus::ABORT {
                     // We would like to use fetch_or, but x86 is a fat pile of shit. Unlike good
                     // instructions sets (RISC-V), atomic bit-wise operations in x86 can only use
