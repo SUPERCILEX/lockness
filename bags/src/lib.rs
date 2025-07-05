@@ -2,7 +2,10 @@ mod cache_padded;
 mod mpmc;
 mod slot;
 
-use std::sync::atomic::{AtomicU32, AtomicU64};
+use std::{
+    process::abort,
+    sync::atomic::{AtomicU32, AtomicU64},
+};
 
 pub use mpmc::{Receiver as MpmcReceiver, Sender as MpmcSender, mpmc};
 use rustix::{
@@ -24,6 +27,12 @@ fn atomic_sleep(word: &AtomicU32, expected: u32) {
         Ok(()) | Err(Errno::AGAIN | Errno::INTR) => (),
         Err(e) => unreachable!("Futex wait bug: {e}"),
     }
+}
+
+#[cold]
+fn abort_with_message(m: &str) {
+    eprintln!("{m}");
+    abort()
 }
 
 /// Uses the high bits of a u64 to make a u32 futex

@@ -1,7 +1,6 @@
 use std::{
     cell::UnsafeCell,
     mem::MaybeUninit,
-    process::abort,
     ptr,
     sync::{
         Arc,
@@ -16,7 +15,7 @@ use std::{
 
 use bitflags::bitflags;
 
-use crate::{atomic_sleep, atomic_wake, cache_padded::CachePadded};
+use crate::{abort_with_message, atomic_sleep, atomic_wake, cache_padded::CachePadded};
 
 #[must_use]
 pub fn mpsc<T>() -> (Sender<T>, Receiver<T>) {
@@ -389,12 +388,6 @@ impl<T> Drop for Receiver<T> {
             atomic_wake(send, u32::MAX);
         }
     }
-}
-
-#[cold]
-fn abort_with_message(m: &str) {
-    eprintln!("{m}");
-    abort()
 }
 
 #[cfg(test)]
