@@ -27,6 +27,7 @@ fn atomic_sleep(word: &AtomicU32, expected: u32) {
 }
 
 /// Uses the high bits of a u64 to make a u32 futex
+#[cfg(all(target_arch = "x86_64", not(miri)))]
 const fn u64_to_futex(word: &AtomicU64) -> &AtomicU32 {
     #[cfg(target_endian = "big")]
     {

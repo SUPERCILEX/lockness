@@ -56,14 +56,14 @@ unsafe impl<T: Send> Send for Sender<T> {}
 unsafe impl<T> Sync for Sender<T> {}
 unsafe impl<T: Send> Send for Receiver<T> {}
 
-#[cfg(not(miri))]
+#[cfg(all(target_arch = "x86_64", not(miri)))]
 type SendStatusU = u64;
-#[cfg(not(miri))]
+#[cfg(all(target_arch = "x86_64", not(miri)))]
 type SendStatusAtomicU = std::sync::atomic::AtomicU64;
 
-#[cfg(miri)]
+#[cfg(not(all(target_arch = "x86_64", not(miri))))]
 type SendStatusU = u32;
-#[cfg(miri)]
+#[cfg(not(all(target_arch = "x86_64", not(miri))))]
 type SendStatusAtomicU = AtomicU32;
 
 bitflags! {
@@ -76,7 +76,7 @@ bitflags! {
 }
 
 impl SendStatus {
-    #[cfg(not(miri))]
+    #[cfg(all(target_arch = "x86_64", not(miri)))]
     const ABORT: SendStatusU = {
         let all = Self::all().bits();
         (all & (!all + 1)) >> 1
@@ -165,12 +165,12 @@ impl<T> Sender<T> {
                         expected | SendStatus::SLEEPING
                     };
 
-                    #[cfg(not(miri))]
+                    #[cfg(all(target_arch = "x86_64", not(miri)))]
                     atomic_sleep(
                         crate::u64_to_futex(send),
                         (expected.bits() >> u32::BITS).try_into().unwrap(),
                     );
-                    #[cfg(miri)]
+                    #[cfg(not(all(target_arch = "x86_64", not(miri))))]
                     atomic_sleep(send, expected.bits());
 
                     // Pass the torch. If we've been woken up, it means we previously went to sleep
@@ -195,13 +195,13 @@ impl<T> Sender<T> {
         } = &*self.inner;
 
         {
-            #[cfg(not(miri))]
+            #[cfg(all(target_arch = "x86_64", not(miri)))]
             let send = SendStatus::from_bits_retain(send.fetch_add(1, Relaxed));
-            #[cfg(miri)]
+            #[cfg(not(all(target_arch = "x86_64", not(miri))))]
             let send = SendStatus::from_bits_retain(send.fetch_or(1, Relaxed));
             {
                 let reservations = send.reservations();
-                #[cfg(not(miri))]
+                #[cfg(all(target_arch = "x86_64", not(miri)))]
                 if reservations > SendStatus::ABORT {
                     // We would like to use fetch_or, but x86 is a fat pile of shit. Unlike good
                     // instructions sets (RISC-V), atomic bit-wise operations in x86 can only use
@@ -359,9 +359,9 @@ impl<T> Receiver<T> {
                 .contains(SendStatus::SLEEPING);
 
         if sender_sleeping {
-            #[cfg(not(miri))]
+            #[cfg(all(target_arch = "x86_64", not(miri)))]
             atomic_wake(crate::u64_to_futex(send), 1);
-            #[cfg(miri)]
+            #[cfg(not(all(target_arch = "x86_64", not(miri))))]
             atomic_wake(send, 1);
         }
 
@@ -383,9 +383,9 @@ impl<T> Drop for Receiver<T> {
                 .contains(SendStatus::SLEEPING);
 
         if sender_sleeping {
-            #[cfg(not(miri))]
+            #[cfg(all(target_arch = "x86_64", not(miri)))]
             atomic_wake(crate::u64_to_futex(send), u32::MAX);
-            #[cfg(miri)]
+            #[cfg(not(all(target_arch = "x86_64", not(miri))))]
             atomic_wake(send, u32::MAX);
         }
     }
