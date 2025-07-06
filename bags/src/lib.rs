@@ -18,14 +18,23 @@ pub use slot::{Receiver as SlotReceiver, Sender as SlotSender, mpsc as mpsc_slot
 #[inline(always)]
 #[allow(clippy::inline_always)]
 fn atomic_wake(word: &AtomicU32, waiters: u32) -> usize {
-    futex::wake(word, Flags::PRIVATE, waiters).expect("Futex wake bug")
+    let result = futex::wake(word, Flags::PRIVATE, waiters);
+    if cfg!(debug_assertions) {
+        result.expect("Futex wake bug")
+    } else {
+        result.unwrap_or(0)
+    }
 }
 
 #[cold]
 fn atomic_sleep(word: &AtomicU32, expected: u32) {
     match futex::wait(word, Flags::PRIVATE, expected, None) {
         Ok(()) | Err(Errno::AGAIN | Errno::INTR) => (),
-        Err(e) => unreachable!("Futex wait bug: {e}"),
+        Err(e) => {
+            if cfg!(debug_assertions) {
+                unreachable!("Futex wait bug: {e}")
+            }
+        }
     }
 }
 

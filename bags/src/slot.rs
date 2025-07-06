@@ -67,7 +67,7 @@ type SendStatusAtomicU = AtomicU32;
 
 bitflags! {
     #[derive(Copy, Clone, Default, Debug)]
-    pub struct SendStatus: SendStatusU {
+    struct SendStatus: SendStatusU {
         const RECEIVER_DEAD = 1 << (SendStatusU::BITS - 1);
         const SLEEPING = 1 << (SendStatusU::BITS - 2);
         // RESERVE is implicitly encoded as any other bit
@@ -88,7 +88,7 @@ impl SendStatus {
 
 bitflags! {
     #[derive(Copy, Clone, Default, Debug)]
-    pub struct RecvStatus: u32 {
+    struct RecvStatus: u32 {
         const COMMIT = 1 << 0;
         const SLEEPING = 1 << 1;
         const SENDER_DEAD = 1 << 2;
