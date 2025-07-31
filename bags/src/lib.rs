@@ -47,14 +47,13 @@ fn abort_with_message(m: &str) {
 /// Uses the high bits of a u64 to make a u32 futex
 #[cfg(all(target_arch = "x86_64", not(miri)))]
 const fn u64_to_futex(word: &AtomicU64) -> &AtomicU32 {
-    #[cfg(target_endian = "big")]
-    {
+    if cfg!(target_endian = "big") {
         let ptr = word.as_ptr().cast::<u32>();
         unsafe { AtomicU32::from_ptr(ptr) }
-    }
-    #[cfg(target_endian = "little")]
-    {
+    } else if cfg!(target_endian = "little") {
         let ptr = word.as_ptr().cast::<u32>();
         unsafe { AtomicU32::from_ptr(ptr.add(1)) }
+    } else {
+        unreachable!();
     }
 }

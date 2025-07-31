@@ -194,10 +194,11 @@ impl<T> Sender<T> {
         } = &*self.inner;
 
         {
-            #[cfg(all(target_arch = "x86_64", not(miri)))]
-            let send = SendStatus::from_bits_retain(send.fetch_add(1, Relaxed));
-            #[cfg(not(all(target_arch = "x86_64", not(miri))))]
-            let send = SendStatus::from_bits_retain(send.fetch_or(1, Relaxed));
+            let send = if cfg!(all(target_arch = "x86_64", not(miri))) {
+                SendStatus::from_bits_retain(send.fetch_add(1, Relaxed))
+            } else {
+                SendStatus::from_bits_retain(send.fetch_or(1, Relaxed))
+            };
             {
                 let reservations = send.reservations();
                 #[cfg(all(target_arch = "x86_64", not(miri)))]
