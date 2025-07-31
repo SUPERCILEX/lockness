@@ -7,12 +7,15 @@ use std::{
     sync::atomic::{AtomicU32, AtomicU64},
 };
 
-pub use mpmc::{Receiver as MpmcReceiver, Sender as MpmcSender, mpmc};
+pub use mpmc::mpmc;
 use rustix::{
     io::Errno,
     thread::{futex, futex::Flags},
 };
 pub use slot::{Receiver as SlotReceiver, Sender as SlotSender, mpsc as mpsc_slot};
+
+pub type MpmcSender<T> = mpmc::Sender<30, T>;
+pub type MpmcReceiver<T> = mpmc::Receiver<30, T>;
 
 #[cold]
 #[inline(always)]
