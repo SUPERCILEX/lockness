@@ -341,19 +341,19 @@ impl<T> Receiver<T> {
 
         let value = {
             let slot = slot.get();
-            let data = unsafe { ptr::read(slot) };
-            // Synchronize on the "send" reservations to read data before the sender
-            // overwrites it. Also ensures that "recv" was written to before
-            // publishing "send". Alternatively, we could use amoswap (and
-            // restore the DEAD state), but splitting the swap allows the store to be
-            // buffered.
-            //
-            // We don't use acquire/release semantics on the "send" atomic itself because we
-            // expect the contended Sender case to result in many loads to "send" which
-            // don't need synchronization.
-            fence(Release);
-            unsafe { data.assume_init() }
+            unsafe { ptr::read(slot).assume_init() }
         };
+        // Synchronize on the "send" reservations to read data before the sender
+        // overwrites it. Also ensures that "recv" was written to before
+        // publishing "send". Alternatively, we could use amoswap (and
+        // restore the DEAD state), but splitting the swap allows the store to be
+        // buffered.
+        //
+        // We don't use acquire/release semantics on the "send" atomic itself because we
+        // expect the contended Sender case to result in many loads to "send" which
+        // don't need synchronization.
+        fence(Release);
+
         let sender_sleeping =
             SendStatus::from_bits_retain(send.swap(SendStatus::default().bits(), Relaxed))
                 .contains(SendStatus::SLEEPING);
