@@ -74,7 +74,7 @@ impl<const N: usize, T> Drop for Inner<N, T> {
         } = self;
 
         let values = recv.load(Acquire) & !Status::all().bits();
-        unsafe_drain_mask(values, (bag, PhantomData), |slot| {
+        drain_mask(values, (bag, PhantomData), |slot| {
             let slot = slot.get_mut();
             unsafe {
                 slot.assume_init_drop();
@@ -186,7 +186,7 @@ impl<const N: usize, T> Sender<N, T> {
         );
 
         fence(Acquire);
-        unsafe_drain_mask(reserved, (bag, PhantomData), |slot| {
+        drain_mask(reserved, (bag, PhantomData), |slot| {
             let slot = slot.get();
             let value = MaybeUninit::new(data.take());
             unsafe {
@@ -300,7 +300,7 @@ impl<const N: usize, T> Receiver<N, T> {
         let mut values = ArrayVec::new_const();
         debug_assert!(claimed.count_ones() as usize <= N);
         debug_assert!(claimed > 0);
-        unsafe_drain_mask(claimed, (bag, PhantomData), |slot| {
+        drain_mask(claimed, (bag, PhantomData), |slot| {
             let slot = slot.get();
             let value = unsafe { ptr::read(slot).assume_init() };
             unsafe {
@@ -390,34 +390,23 @@ impl<const N: usize, T, F: FnMut(&mut T)> DrainMaskBuf<N, T>
     }
 }
 
-/// Safety:
-/// `mask` must only hold up to N bits, starting from the MSB
 #[inline]
-fn unsafe_drain_mask<const N: usize, T, Buf: DrainMaskBuf<N, T>>(
+fn drain_mask<const N: usize, T, Buf: DrainMaskBuf<N, T>>(
     mut mask: u32,
     mut bag: Buf,
     mut f: Buf::F,
 ) {
-    const {
-        assert!(N > 0);
-    }
-    debug_assert_eq!(0, mask & ((1 << (u32::BITS - N as u32)) - 1));
-
-    let mut remaining = mask.count_ones();
-    while remaining > 0 {
+    loop {
         let i = mask.leading_zeros();
         {
             let i = usize::try_from(i).unwrap();
             if i >= N {
-                debug_assert!(false);
-                unsafe {
-                    std::hint::unreachable_unchecked();
-                }
+                break;
             }
+
             bag.do_(&mut f, i);
         }
         mask &= !(1 << (u32::BITS - i - 1));
-        remaining -= 1;
     }
 }
 
