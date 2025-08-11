@@ -180,6 +180,7 @@ impl<const N: usize, T> Sender<N, T> {
                 std::hint::spin_loop();
             }
         };
+        debug_assert!(reserved > 0);
         debug_assert!(
             usize::try_from(reserved.count_ones()).unwrap() <= data.available_items().get()
         );
@@ -298,6 +299,7 @@ impl<const N: usize, T> Receiver<N, T> {
 
         let mut values = ArrayVec::new_const();
         debug_assert!(claimed.count_ones() as usize <= N);
+        debug_assert!(claimed > 0);
         unsafe_drain_mask(claimed, (bag, PhantomData), |slot| {
             let slot = slot.get();
             let value = unsafe { ptr::read(slot).assume_init() };
@@ -399,10 +401,9 @@ fn unsafe_drain_mask<const N: usize, T, Buf: DrainMaskBuf<N, T>>(
     const {
         assert!(N > 0);
     }
+    debug_assert_eq!(0, mask & ((1 << (u32::BITS - N as u32)) - 1));
 
     let mut remaining = mask.count_ones();
-    debug_assert!(remaining > 0);
-    debug_assert_eq!(0, mask & !(1 << (u32::BITS - 1)));
     while remaining > 0 {
         let i = mask.leading_zeros();
         {
