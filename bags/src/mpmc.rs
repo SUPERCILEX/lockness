@@ -134,27 +134,27 @@ impl<const N: usize, T> Sender<N, T> {
         //
         // To try and accomplish these goals, we assign a fixed bias to each sender
         // (an adaptive bias would be better, but that seems like a pain to paper over
-        // the missing hardware capabilities). We start by trying to claim bits centered
-        // around the bias. If this fails, then we look at the returned free bits and
+        // the missing hardware capabilities). We start by trying to claim bits starting
+        // at the bias. If this fails, then we look at the returned free bits and
         // try to claim those, repeating some number of times. We never request more
         // bits than can be sent to avoid the do->undo problem described above—extra
         // bits are trimmed from the left or right depending on the parity of the bias.
         //
         // Additional complexity:
         // - Our reservation bits share the same word as the status bits which means we
-        //   have to be careful to shift the request mask around the status bits.
+        //   have to be careful to shift the request mask over the status bits.
         // - The sender proposes items for us to send, but we consider any positive
         //   number of items sent to be a success.
         //
         // Currently, receivers don't actually support claiming fewer than the entire
-        // word's worth of bits making the affinitization is somewhat moot, but you
-        // still get sender contention avoidance plus future proofing.
+        // word's worth of bits making the affinitization somewhat moot, but you still
+        // get sender contention avoidance plus future proofing.
         let reserved = {
             let items = data.available_items();
             let mut aligned_request_mask = compute_request_mask::<N>(items, self.bias);
             debug_assert_eq!(0, aligned_request_mask & Status::all().bits());
 
-            let mut i = 32;
+            let mut remaining_attempts = 32;
             loop {
                 let prev = send.fetch_or(aligned_request_mask, Relaxed);
 
@@ -171,12 +171,11 @@ impl<const N: usize, T> Sender<N, T> {
                 if reserved.count_ones() > 0 {
                     break reserved;
                 }
-                if i == 0 {
-                    // Give up
+                if remaining_attempts == 0 {
                     return Err(TrySendError::Full(data.remit()));
                 }
                 aligned_request_mask = clear_extra_bits(!slots, items, self.bias.is_multiple_of(2));
-                i -= 1;
+                remaining_attempts -= 1;
                 std::hint::spin_loop();
             }
         };
@@ -197,12 +196,12 @@ impl<const N: usize, T> Sender<N, T> {
         let receiver_sleeping = Status::from_bits_retain({
             // Since we use fetch_or, the Status bits are actually inverted. 1 means "off"
             // and conversely 0 means "on".
-            let set = reserved | Status::all().bits();
-            !if cfg!(target_arch = "x86_64") && set == u32::MAX {
+            let commit = reserved | Status::all().bits();
+            !if cfg!(target_arch = "x86_64") && commit == u32::MAX {
                 // x86 optimization to avoid a cmpxchg loop in fetch_or
-                recv.swap(set, Release)
+                recv.swap(commit, Release)
             } else {
-                recv.fetch_or(set, Release)
+                recv.fetch_or(commit, Release)
             }
         })
         .contains(Status::SLEEPING);
@@ -303,10 +302,10 @@ impl<const N: usize, T> Receiver<N, T> {
         drain_mask(claimed, (bag, PhantomData), |slot| {
             let slot = slot.get();
             let value = unsafe { ptr::read(slot).assume_init() };
-            unsafe {
-                if cfg!(debug_assertions) {
-                    values.push(value);
-                } else {
+            if cfg!(debug_assertions) {
+                values.push(value);
+            } else {
+                unsafe {
                     values.push_unchecked(value);
                 }
             }
@@ -314,12 +313,12 @@ impl<const N: usize, T> Receiver<N, T> {
         fence(Release);
 
         let sender_sleeping = Status::from_bits_retain({
-            let set = !claimed & !Status::all().bits();
-            if cfg!(target_arch = "x86_64") && set == 0 {
+            let commit = !claimed & !Status::all().bits();
+            if cfg!(target_arch = "x86_64") && commit == 0 {
                 // x86 optimization to avoid a cmpxchg loop in fetch_or
-                recv.swap(set, Relaxed)
+                send.swap(commit, Relaxed)
             } else {
-                recv.fetch_or(set, Relaxed)
+                send.fetch_and(commit, Relaxed)
             }
         })
         .contains(Status::SLEEPING);
@@ -419,9 +418,9 @@ fn compute_request_mask<const N: usize>(available_items: NonZeroUsize, bias: u32
     if bias == 0 {
         mask
     } else {
-        let status_bits = const { Status::all().bits().count_ones() };
-        let overstepped = mask.rotate_right(bias + status_bits);
-        (overstepped & (high_bit >> (bias - 1)) as u32) | (overstepped << status_bits)
+        let num_status_bits = const { Status::all().bits().count_ones() };
+        let overstepped = mask.rotate_right(bias + num_status_bits);
+        (overstepped & (high_bit >> (bias - 1)) as u32) | (overstepped << num_status_bits)
     }
 }
 
