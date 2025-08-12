@@ -55,6 +55,10 @@ pub struct Receiver<const N: usize, T> {
     inner: Arc<Inner<N, T>>,
 }
 
+unsafe impl<const N: usize, T: Send> Send for Sender<N, T> {}
+unsafe impl<const N: usize, T> Sync for Sender<N, T> {}
+unsafe impl<const N: usize, T: Send> Send for Receiver<N, T> {}
+
 bitflags! {
     #[derive(Copy, Clone, Default, Debug)]
     struct Status: u32 {
@@ -83,13 +87,77 @@ impl<const N: usize, T> Drop for Inner<N, T> {
     }
 }
 
-trait SendBuffer<T> {
+pub trait SendBuffer<T> {
+    type Container: SendBufferContainer<T>;
+
+    fn available_items(self) -> (usize, Self::Container);
+}
+
+pub trait SendBufferContainer<T> {
     type Remit;
 
-    fn available_items(&self) -> NonZeroUsize;
     fn take(&mut self) -> T;
 
     fn remit(self) -> Self::Remit;
+}
+
+impl<T> SendBuffer<T> for T {
+    type Container = Option<T>;
+
+    fn available_items(self) -> (usize, Self::Container) {
+        (1, Some(self))
+    }
+}
+
+impl<T> SendBufferContainer<T> for Option<T> {
+    type Remit = T;
+
+    fn take(&mut self) -> T {
+        let item = self.take();
+        unsafe { item.unwrap_unchecked() }
+    }
+
+    fn remit(self) -> Self::Remit {
+        unsafe { self.unwrap_unchecked() }
+    }
+}
+
+impl<T> SendBuffer<T> for &mut Vec<T> {
+    type Container = Self;
+
+    fn available_items(self) -> (usize, Self::Container) {
+        (self.len(), self)
+    }
+}
+
+impl<T> SendBufferContainer<T> for &mut Vec<T> {
+    type Remit = ();
+
+    fn take(&mut self) -> T {
+        let item = self.pop();
+        unsafe { item.unwrap_unchecked() }
+    }
+
+    fn remit(self) -> Self::Remit {}
+}
+
+impl<const N: usize, T> SendBuffer<T> for &mut ArrayVec<T, N> {
+    type Container = Self;
+
+    fn available_items(self) -> (usize, Self::Container) {
+        (self.len(), self)
+    }
+}
+
+impl<const N: usize, T> SendBufferContainer<T> for &mut ArrayVec<T, N> {
+    type Remit = ();
+
+    fn take(&mut self) -> T {
+        let item = self.pop();
+        unsafe { item.unwrap_unchecked() }
+    }
+
+    fn remit(self) -> Self::Remit {}
 }
 
 impl<const N: usize, T> Sender<N, T> {
@@ -110,7 +178,10 @@ impl<const N: usize, T> Sender<N, T> {
     }
 
     #[inline]
-    pub fn try_send<B: SendBuffer<T>>(&self, mut data: B) -> Result<(), TrySendError<B::Remit>> {
+    pub fn try_send<B: SendBuffer<T>>(
+        &self,
+        data: B,
+    ) -> Result<(), TrySendError<<B::Container as SendBufferContainer<T>>::Remit>> {
         let Inner {
             send,
             recv,
@@ -149,8 +220,12 @@ impl<const N: usize, T> Sender<N, T> {
         // Currently, receivers don't actually support claiming fewer than the entire
         // word's worth of bits making the affinitization somewhat moot, but you still
         // get sender contention avoidance plus future proofing.
+        let (items, mut data) = data.available_items();
         let reserved = {
-            let items = data.available_items();
+            let Some(items) = NonZeroUsize::new(items) else {
+                return Ok(());
+            };
+
             let mut aligned_request_mask = compute_request_mask::<N>(items, self.bias);
             debug_assert_eq!(0, aligned_request_mask & Status::all().bits());
 
@@ -180,9 +255,7 @@ impl<const N: usize, T> Sender<N, T> {
             }
         };
         debug_assert!(reserved > 0);
-        debug_assert!(
-            usize::try_from(reserved.count_ones()).unwrap() <= data.available_items().get()
-        );
+        debug_assert!(usize::try_from(reserved.count_ones()).unwrap() <= items);
 
         fence(Acquire);
         drain_mask(reserved, (bag, PhantomData), |slot| {
@@ -238,18 +311,23 @@ impl<const N: usize, T> Clone for Sender<N, T> {
 impl<const N: usize, T> Drop for Sender<N, T> {
     fn drop(&mut self) {
         let Inner {
-            send,
+            send: _,
             recv,
             num_senders,
             num_receivers: _,
-            bag,
+            bag: _,
         } = &*self.inner;
 
         if num_senders.fetch_sub(1, Relaxed) > 1 {
             return;
         }
 
-        todo!()
+        let receiver_sleeping =
+            Status::from_bits_retain(!recv.fetch_and(!Status::COUNTERPARTY_DEAD.bits(), Relaxed))
+                .contains(Status::SLEEPING);
+        if receiver_sleeping {
+            atomic_wake(recv, u32::MAX);
+        }
     }
 }
 
@@ -347,17 +425,22 @@ impl<const N: usize, T> Drop for Receiver<N, T> {
     fn drop(&mut self) {
         let Inner {
             send,
-            recv,
+            recv: _,
             num_senders: _,
             num_receivers,
-            bag,
+            bag: _,
         } = &*self.inner;
 
         if num_receivers.fetch_sub(1, Relaxed) > 1 {
             return;
         }
 
-        todo!()
+        let sender_sleeping =
+            Status::from_bits_retain(send.fetch_or(Status::COUNTERPARTY_DEAD.bits(), Relaxed))
+                .contains(Status::SLEEPING);
+        if sender_sleeping {
+            atomic_wake(send, u32::MAX);
+        }
     }
 }
 
@@ -441,11 +524,18 @@ fn clear_extra_bits(mut mask: u32, max: NonZeroUsize, direction: bool) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use std::{fmt::Write, num::NonZeroUsize};
+    use std::{
+        fmt::Write,
+        num::NonZeroUsize,
+        sync::mpsc::{RecvError, SendError, TryRecvError, TrySendError},
+        thread,
+    };
 
+    use arrayvec::ArrayVec;
     use expect_test::expect;
+    use rstest::rstest;
 
-    use crate::mpmc::compute_request_mask;
+    use crate::{MpmcReceiver, MpmcSender, mpmc, mpmc::compute_request_mask};
 
     #[test]
     fn sane_request_mask() {
@@ -485,5 +575,139 @@ mod tests {
             compute_request_mask(items= 7, bias=27)=0b11110000000000000000000000011100
         "#]];
         expected.assert_eq(&actual);
+    }
+
+    type SendFn<T> = fn(&MpmcSender<T>, T) -> Result<(), SendError<T>>;
+    type RecvFn<T> = fn(&MpmcReceiver<T>) -> Result<ArrayVec<T, 30>, RecvError>;
+
+    fn send_polyfill<T>(sender: &MpmcSender<T>, mut value: T) -> Result<(), SendError<T>> {
+        loop {
+            match sender.try_send(value) {
+                Ok(()) => return Ok(()),
+                Err(TrySendError::Disconnected(t)) => return Err(SendError(t)),
+                Err(TrySendError::Full(t)) => value = t,
+            }
+        }
+    }
+
+    fn recv_polyfill<T>(receiver: &MpmcReceiver<T>) -> Result<ArrayVec<T, 30>, RecvError> {
+        loop {
+            match receiver.try_recv() {
+                Ok(value) => return Ok(value),
+                Err(TryRecvError::Disconnected) => return Err(RecvError),
+                Err(TryRecvError::Empty) => (),
+            }
+        }
+    }
+
+    #[rstest]
+    #[case(send_polyfill::<Box<i32>>, recv_polyfill::<Box<i32>>)]
+    // #[case(MpmcSender::<Box<i32>>::send, MpmcReceiver::<Box<i32>>::recv)]
+    fn drops(#[case] send: SendFn<Box<i32>>, #[case] recv: RecvFn<Box<i32>>) {
+        {
+            let (_sender, _receiver) = mpmc::<Box<i32>>();
+        }
+
+        {
+            let (sender, _receiver) = mpmc::<Box<i32>>();
+            send(&sender, Box::new(42)).unwrap();
+        }
+
+        {
+            let (sender, receiver) = mpmc::<Box<i32>>();
+            drop(receiver);
+            send(&sender, Box::new(42)).unwrap_err();
+        }
+
+        {
+            let (sender, receiver) = mpmc::<Box<i32>>();
+            send(&sender, Box::new(42)).unwrap();
+            drop(receiver);
+            send(&sender, Box::new(666)).unwrap_err();
+        }
+
+        {
+            let (sender, receiver) = mpmc::<Box<i32>>();
+            drop(sender);
+            recv(&receiver).unwrap_err();
+        }
+
+        {
+            let (sender, receiver) = mpmc::<Box<i32>>();
+            send(&sender, Box::new(666)).unwrap();
+            drop(sender);
+
+            let value = *recv(&receiver).unwrap().pop().unwrap();
+            assert_eq!(666, value);
+            recv(&receiver).unwrap_err();
+        }
+    }
+
+    #[rstest]
+    #[case(send_polyfill::<Box<usize>>, recv_polyfill::<Box<usize>>)]
+    // #[case(MpmcSender::<Box<usize>>::send, MpmcReceiver::<Box<usize>>::recv)]
+    fn basic(#[case] send: SendFn<Box<usize>>, #[case] recv: RecvFn<Box<usize>>) {
+        let (sender, receiver) = mpmc();
+        let senders = (0..3)
+            .map(|_| {
+                thread::spawn({
+                    let sender = sender.clone();
+                    move || {
+                        for i in 0..1000 {
+                            send(&sender, Box::new(i)).unwrap()
+                        }
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        drop(sender);
+        thread::spawn(move || {
+            let mut counts = [0; 1000];
+            while let Ok(mut items) = recv(&receiver) {
+                for i in items.drain(..) {
+                    counts[*i] += 1;
+                }
+            }
+            for (i, &count) in counts.iter().enumerate() {
+                assert_eq!(3, count, "At idx {i}");
+            }
+        })
+        .join()
+        .unwrap();
+        for sender in senders {
+            sender.join().unwrap();
+        }
+    }
+
+    #[rstest]
+    #[case(send_polyfill::<Vec<i32>>, recv_polyfill::<Vec<i32>>)]
+    // #[case(MpmcSender::<Vec<i32>>::send, MpmcReceiver::<Vec<i32>>::recv)]
+    fn ping_pong(#[case] send: SendFn<Vec<i32>>, #[case] recv: RecvFn<Vec<i32>>) {
+        let (ping_sender, pong_receiver) = mpmc();
+        let (pong_sender, ping_receiver) = mpmc();
+
+        let ping = thread::spawn(move || {
+            let mut data = Vec::new();
+            for i in 0..1000 {
+                data.push(i);
+                send(&ping_sender, data).unwrap();
+                data = recv(&ping_receiver).unwrap().pop().unwrap();
+            }
+            data
+        });
+        let pong = thread::spawn(move || {
+            while let Ok(mut data) = recv(&pong_receiver) {
+                let mut data = data.pop().unwrap();
+                data.push(*data.last().unwrap());
+                send(&pong_sender, data).unwrap();
+            }
+        });
+
+        let actual = ping.join().unwrap();
+        let () = pong.join().unwrap();
+
+        let expected: Vec<_> = (0..1000).flat_map(|i| [i, i]).collect();
+
+        assert_eq!(expected, actual);
     }
 }

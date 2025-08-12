@@ -7,7 +7,7 @@ use std::{
     sync::atomic::{AtomicU32, AtomicU64},
 };
 
-pub use mpmc::mpmc;
+pub use mpmc::{SendBuffer, SendBufferContainer, mpmc};
 use rustix::{
     io::Errno,
     thread::{futex, futex::Flags},
