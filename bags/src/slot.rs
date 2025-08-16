@@ -23,7 +23,7 @@ pub fn mpsc<T>() -> (Sender<T>, Receiver<T>) {
         send: CachePadded(SendStatusAtomicU::new(SendStatus::default().bits())),
         recv: AtomicU32::new(RecvStatus::default().bits()),
         num_senders: AtomicU32::new(1),
-        slot: UnsafeCell::new(MaybeUninit::uninit()),
+        slot: CachePadded(UnsafeCell::new(MaybeUninit::uninit())),
     });
     (
         Sender {
@@ -38,7 +38,7 @@ struct Inner<T> {
     send: CachePadded<SendStatusAtomicU>,
     recv: AtomicU32,
     num_senders: AtomicU32,
-    slot: UnsafeCell<MaybeUninit<T>>,
+    slot: CachePadded<UnsafeCell<MaybeUninit<T>>>,
 }
 
 #[derive(Debug)]
