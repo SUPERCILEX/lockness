@@ -120,6 +120,7 @@ impl<T> Sender<T> {
         'outer: loop {
             match self.try_send(data) {
                 Ok(()) => return Ok(()),
+                Err(TrySendError::Disconnected(data)) => return Err(SendError(data)),
                 Err(TrySendError::Full(restored)) => {
                     data = restored;
 
@@ -129,48 +130,39 @@ impl<T> Sender<T> {
                         loop {
                             std::hint::spin_loop();
 
-                            // Here and below we manually replicate what try_send does but without
-                            // calling fetch_add to avoid spamming the cache network with pointless
-                            // writes
-                            let send = SendStatus::from_bits_retain(send.load(Relaxed));
-                            if send.reservations() == 0 {
+                            // We manually replicate what try_send does but without calling
+                            // fetch_add to avoid spamming the cache network with pointless writes
+                            let send = if spin == 0 {
+                                // Again this fetch_or is sad on x86, but we're about to sleep so I
+                                // guess it's fine
+                                send.fetch_or(SendStatus::SLEEPING.bits(), Relaxed)
+                                    | SendStatus::SLEEPING.bits()
+                            } else {
+                                send.load(Relaxed)
+                            };
+                            let status = SendStatus::from_bits_retain(send);
+
+                            if status.reservations() == 0 {
                                 continue 'outer;
                             }
-                            if send.contains(SendStatus::RECEIVER_DEAD) {
+                            if status.contains(SendStatus::RECEIVER_DEAD) {
                                 return Err(SendError(data));
                             }
-
-                            if spin == 0 {
+                            if status.contains(SendStatus::SLEEPING) {
                                 break send;
                             }
+
                             spin -= 1;
                         }
-                    };
-
-                    let expected = if expected.contains(SendStatus::SLEEPING) {
-                        expected
-                    } else {
-                        // Again this fetch_or is sad on x86, but we're about to sleep so I guess
-                        // it's fine
-                        let expected = SendStatus::from_bits_retain(
-                            send.fetch_or(SendStatus::SLEEPING.bits(), Relaxed),
-                        );
-                        if expected.reservations() == 0 {
-                            continue 'outer;
-                        }
-                        if expected.contains(SendStatus::RECEIVER_DEAD) {
-                            return Err(SendError(data));
-                        }
-                        expected | SendStatus::SLEEPING
                     };
 
                     #[cfg(all(target_arch = "x86_64", not(miri)))]
                     atomic_sleep(
                         crate::u64_to_futex(send),
-                        (expected.bits() >> u32::BITS).try_into().unwrap(),
+                        (expected >> u32::BITS).try_into().unwrap(),
                     );
                     #[cfg(not(all(target_arch = "x86_64", not(miri))))]
-                    atomic_sleep(send, expected.bits());
+                    atomic_sleep(send, expected);
 
                     // Pass the torch. If we've been woken up, it means we previously went to sleep
                     // and thus anybody attempting to write a value alongside us might have also
@@ -179,7 +171,6 @@ impl<T> Sender<T> {
                     // spurious WAKE syscall at the end of the chain.
                     send.fetch_or(SendStatus::SLEEPING.bits(), Relaxed);
                 }
-                Err(TrySendError::Disconnected(data)) => return Err(SendError(data)),
             }
         }
     }
@@ -297,8 +288,9 @@ impl<T> Receiver<T> {
         loop {
             match self.try_recv() {
                 Ok(v) => return Ok(v),
+                Err(TryRecvError::Disconnected) => return Err(RecvError),
                 Err(TryRecvError::Empty) => {
-                    if i < 100 {
+                    if i < 32 {
                         i += 1;
                         std::hint::spin_loop();
                         continue;
@@ -313,7 +305,6 @@ impl<T> Receiver<T> {
                     }
                     atomic_sleep(recv, RecvStatus::SLEEPING.bits());
                 }
-                Err(TryRecvError::Disconnected) => return Err(RecvError),
             }
         }
     }

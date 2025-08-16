@@ -18,7 +18,7 @@ use std::{
 use arrayvec::ArrayVec;
 use bitflags::bitflags;
 
-use crate::{abort_with_message, atomic_wake, cache_padded::CachePadded};
+use crate::{abort_with_message, atomic_sleep, atomic_wake, cache_padded::CachePadded};
 
 #[must_use]
 pub fn mpmc<T>() -> (Sender<30, T>, Receiver<30, T>) {
@@ -88,7 +88,7 @@ impl<const N: usize, T> Drop for Inner<N, T> {
 }
 
 pub trait SendBuffer<T> {
-    type Container: SendBufferContainer<T>;
+    type Container: SendBufferContainer<T, Remit = Self>;
 
     fn available_items(self) -> (usize, Self::Container);
 }
@@ -131,14 +131,16 @@ impl<T> SendBuffer<T> for &mut Vec<T> {
 }
 
 impl<T> SendBufferContainer<T> for &mut Vec<T> {
-    type Remit = ();
+    type Remit = Self;
 
     fn take(&mut self) -> T {
         let item = self.pop();
         unsafe { item.unwrap_unchecked() }
     }
 
-    fn remit(self) -> Self::Remit {}
+    fn remit(self) -> Self::Remit {
+        self
+    }
 }
 
 impl<const N: usize, T> SendBuffer<T> for &mut ArrayVec<T, N> {
@@ -150,14 +152,16 @@ impl<const N: usize, T> SendBuffer<T> for &mut ArrayVec<T, N> {
 }
 
 impl<const N: usize, T> SendBufferContainer<T> for &mut ArrayVec<T, N> {
-    type Remit = ();
+    type Remit = Self;
 
     fn take(&mut self) -> T {
         let item = self.pop();
         unsafe { item.unwrap_unchecked() }
     }
 
-    fn remit(self) -> Self::Remit {}
+    fn remit(self) -> Self::Remit {
+        self
+    }
 }
 
 impl<const N: usize, T> Sender<N, T> {
@@ -169,12 +173,50 @@ impl<const N: usize, T> Sender<N, T> {
         assert!(N > 0, "Use a ::mpsc_slot instead.");
     };
 
-    pub fn send<I: ExactSizeIterator>(
+    pub fn send<B: SendBuffer<T>>(
         &self,
-        data: impl IntoIterator<Item = T, IntoIter = I>,
-    ) -> Result<(), SendError<impl IntoIterator<Item = T>>> {
-        todo!();
-        Err(SendError([]))
+        mut data: B,
+    ) -> Result<(), SendError<<B::Container as SendBufferContainer<T>>::Remit>> {
+        'outer: loop {
+            match self.try_send(data) {
+                Ok(()) => return Ok(()),
+                Err(TrySendError::Disconnected(data)) => return Err(SendError(data)),
+                Err(TrySendError::Full(restored)) => {
+                    data = restored;
+
+                    let send = &self.inner.send;
+                    let expected = {
+                        let mut spin = 32;
+                        loop {
+                            std::hint::spin_loop();
+
+                            let send = if spin == 0 {
+                                send.fetch_or(Status::SLEEPING.bits(), Relaxed)
+                                    | Status::SLEEPING.bits()
+                            } else {
+                                send.load(Relaxed)
+                            };
+                            if send | Status::all().bits() < u32::MAX {
+                                continue 'outer;
+                            }
+
+                            let status = Status::from_bits_retain(send);
+                            if status.contains(Status::COUNTERPARTY_DEAD) {
+                                return Err(SendError(data));
+                            }
+                            if status.contains(Status::SLEEPING) {
+                                break send;
+                            }
+
+                            spin -= 1;
+                        }
+                    };
+
+                    atomic_sleep(send, expected);
+                    send.fetch_or(Status::SLEEPING.bits(), Relaxed);
+                }
+            }
+        }
     }
 
     #[inline]
@@ -229,7 +271,6 @@ impl<const N: usize, T> Sender<N, T> {
             let mut aligned_request_mask = compute_request_mask::<N>(items, self.bias);
             debug_assert_eq!(0, aligned_request_mask & Status::all().bits());
 
-            let mut remaining_attempts = 32;
             loop {
                 let prev = send.fetch_or(aligned_request_mask, Relaxed);
 
@@ -238,19 +279,16 @@ impl<const N: usize, T> Sender<N, T> {
                 }
 
                 let slots = prev | Status::all().bits();
-                if slots.count_zeros() == 0 {
+                if slots == u32::MAX {
                     return Err(TrySendError::Full(data.remit()));
                 }
 
                 let reserved = !slots & aligned_request_mask;
-                if reserved.count_ones() > 0 {
+                if reserved > 0 {
                     break reserved;
                 }
-                if remaining_attempts == 0 {
-                    return Err(TrySendError::Full(data.remit()));
-                }
+
                 aligned_request_mask = clear_extra_bits(!slots, items, self.bias.is_multiple_of(2));
-                remaining_attempts -= 1;
                 std::hint::spin_loop();
             }
         };
@@ -333,7 +371,44 @@ impl<const N: usize, T> Drop for Sender<N, T> {
 
 impl<const N: usize, T> Receiver<N, T> {
     pub fn recv(&self) -> Result<ArrayVec<T, N>, RecvError> {
-        todo!()
+        'outer: loop {
+            match self.try_recv() {
+                Ok(data) => return Ok(data),
+                Err(TryRecvError::Disconnected) => return Err(RecvError),
+                Err(TryRecvError::Empty) => {
+                    let recv = &self.inner.recv;
+                    let expected = {
+                        let mut spin = 32;
+                        loop {
+                            std::hint::spin_loop();
+
+                            let recv = if spin == 0 {
+                                recv.fetch_and(!Status::SLEEPING.bits(), Relaxed)
+                                    & !Status::SLEEPING.bits()
+                            } else {
+                                recv.load(Relaxed)
+                            };
+                            if recv & !Status::all().bits() > 0 {
+                                continue 'outer;
+                            }
+
+                            let status = Status::from_bits_retain(!recv);
+                            if status.contains(Status::COUNTERPARTY_DEAD) {
+                                return Err(RecvError);
+                            }
+                            if status.contains(Status::SLEEPING) {
+                                break recv;
+                            }
+
+                            spin -= 1;
+                        }
+                    };
+
+                    atomic_sleep(recv, expected);
+                    recv.fetch_and(!Status::SLEEPING.bits(), Relaxed);
+                }
+            }
+        }
     }
 
     #[inline]
@@ -364,7 +439,7 @@ impl<const N: usize, T> Receiver<N, T> {
         let claimed = {
             let prev = recv.fetch_and(Status::all().bits(), Acquire);
             let claimed = prev & !Status::all().bits();
-            if claimed.count_ones() == 0 {
+            if claimed == 0 {
                 let status = Status::from_bits_retain(!prev);
                 if status.contains(Status::COUNTERPARTY_DEAD) {
                     return Err(TryRecvError::Disconnected);
@@ -492,6 +567,7 @@ fn drain_mask<const N: usize, T, Buf: DrainMaskBuf<N, T>>(
     }
 }
 
+#[allow(clippy::cast_sign_loss)]
 fn compute_request_mask<const N: usize>(available_items: NonZeroUsize, bias: u32) -> u32 {
     debug_assert!((bias as usize) < N);
 
@@ -602,7 +678,7 @@ mod tests {
 
     #[rstest]
     #[case(send_polyfill::<Box<i32>>, recv_polyfill::<Box<i32>>)]
-    // #[case(MpmcSender::<Box<i32>>::send, MpmcReceiver::<Box<i32>>::recv)]
+    #[case(MpmcSender::<Box<i32>>::send, MpmcReceiver::<Box<i32>>::recv)]
     fn drops(#[case] send: SendFn<Box<i32>>, #[case] recv: RecvFn<Box<i32>>) {
         {
             let (_sender, _receiver) = mpmc::<Box<i32>>();
@@ -645,7 +721,7 @@ mod tests {
 
     #[rstest]
     #[case(send_polyfill::<Box<usize>>, recv_polyfill::<Box<usize>>)]
-    // #[case(MpmcSender::<Box<usize>>::send, MpmcReceiver::<Box<usize>>::recv)]
+    #[case(MpmcSender::<Box<usize>>::send, MpmcReceiver::<Box<usize>>::recv)]
     fn basic(#[case] send: SendFn<Box<usize>>, #[case] recv: RecvFn<Box<usize>>) {
         let (sender, receiver) = mpmc();
         let senders = (0..3)
@@ -681,7 +757,7 @@ mod tests {
 
     #[rstest]
     #[case(send_polyfill::<Vec<i32>>, recv_polyfill::<Vec<i32>>)]
-    // #[case(MpmcSender::<Vec<i32>>::send, MpmcReceiver::<Vec<i32>>::recv)]
+    #[case(MpmcSender::<Vec<i32>>::send, MpmcReceiver::<Vec<i32>>::recv)]
     fn ping_pong(#[case] send: SendFn<Vec<i32>>, #[case] recv: RecvFn<Vec<i32>>) {
         let (ping_sender, pong_receiver) = mpmc();
         let (pong_sender, ping_receiver) = mpmc();
