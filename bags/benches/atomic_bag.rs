@@ -1,18 +1,20 @@
+#![feature(mpmc_channel)]
 #![allow(clippy::needless_pass_by_value)]
 
 use std::{
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering::Relaxed},
-        mpsc::TrySendError,
+        mpsc::{SendError, TrySendError},
     },
     thread,
     time::{Duration, Instant},
 };
 
+use arrayvec::ArrayVec;
 use criterion::{
     BenchmarkGroup, Criterion, criterion_group, criterion_main, measurement::WallTime,
 };
-use lockness_bags::mpsc_slot;
+use lockness_bags::{MpmcSender, mpmc as lockness_mpmc, mpsc_slot};
 use ringbuf::{
     consumer::Consumer,
     producer::Producer,
@@ -26,7 +28,7 @@ fn questions(c: &mut Criterion) {
         b.iter_custom(|iters| {
             let slot = AtomicU64::new(0);
             thread::scope(|scope| {
-                scope.spawn(|| {
+                let producer = scope.spawn(|| {
                     let mut items_sent = 1;
                     while items_sent <= iters {
                         if slot.swap(items_sent, Relaxed) == 0 {
@@ -48,6 +50,7 @@ fn questions(c: &mut Criterion) {
                     time.elapsed()
                 });
 
+                producer.join().unwrap();
                 consumer.join().unwrap()
             })
         });
@@ -58,7 +61,7 @@ fn questions(c: &mut Criterion) {
             let flag = AtomicBool::new(false);
             let slot = AtomicU64::new(0);
             thread::scope(|scope| {
-                scope.spawn(|| {
+                let producer = scope.spawn(|| {
                     let mut items_sent = 0;
                     while items_sent < iters {
                         if !flag.load(Relaxed) {
@@ -84,34 +87,14 @@ fn questions(c: &mut Criterion) {
                     time.elapsed()
                 });
 
+                producer.join().unwrap();
                 consumer.join().unwrap()
             })
         });
     });
 }
 
-trait MultiBencher {
-    fn bench<
-        T: Send,
-        Sender: Send + Clone,
-        Receiver: Send,
-        Name: AsRef<str>,
-        Create: FnMut() -> (Sender, Receiver),
-        Make: FnMut() -> T + Clone + Send,
-        Send_: FnMut(&mut Sender, T) -> Option<T> + Clone + Send,
-        Receive: FnMut(&mut Receiver) -> Option<T> + Clone + Send,
-    >(
-        &self,
-        group: &mut BenchmarkGroup<WallTime>,
-        name: Name,
-        create: Create,
-        make: Make,
-        send: Send_,
-        recv: Receive,
-    );
-}
-
-trait SingleBencher {
+trait SpscBencher {
     fn bench<
         T: Send,
         Sender,
@@ -132,11 +115,74 @@ trait SingleBencher {
     );
 }
 
+trait MpscBencher {
+    fn bench<
+        T: Send,
+        Sender: Send + Clone,
+        Receiver: Send,
+        Name: AsRef<str>,
+        Create: FnMut() -> (Sender, Receiver),
+        Make: FnMut() -> T + Clone + Send,
+        Send_: FnMut(&mut Sender, T) -> Option<T> + Clone + Send,
+        Receive: FnMut(&mut Receiver) -> Option<T> + Clone + Send,
+    >(
+        &self,
+        group: &mut BenchmarkGroup<WallTime>,
+        name: Name,
+        create: Create,
+        make: Make,
+        send: Send_,
+        recv: Receive,
+    );
+}
+
+trait MpmcBencher {
+    fn bench<
+        T: Send,
+        Sender: Send + Clone,
+        Receiver: Send + Clone,
+        Name: AsRef<str>,
+        Create: FnMut() -> (Sender, Receiver),
+        Make: FnMut() -> T + Clone + Send,
+        Send_: FnMut(&mut Sender, T) -> Option<T> + Clone + Send,
+        Receive: FnMut(&mut Receiver) -> Option<T> + Clone + Send,
+    >(
+        &self,
+        group: &mut BenchmarkGroup<WallTime>,
+        name: Name,
+        create: Create,
+        make: Make,
+        send: Send_,
+        recv: Receive,
+    );
+}
+
 #[allow(clippy::too_many_lines)]
-fn multi(group: &mut BenchmarkGroup<WallTime>, bencher: impl MultiBencher) {
+fn spsc_impls(group: &mut BenchmarkGroup<WallTime>, bencher: impl SpscBencher) {
     bencher.bench(
         group,
-        "mpsc_slot",
+        "ringbuf(1)",
+        || ringbuf::StaticRb::<_, 1>::default().split(),
+        || std::hint::black_box(42),
+        |sender, v| sender.try_push(v).err(),
+        |receiver| receiver.try_pop(),
+    );
+
+    bencher.bench(
+        group,
+        "ringbuf(32)",
+        || ringbuf::StaticRb::<_, 32>::default().split(),
+        || std::hint::black_box(42),
+        |sender, v| sender.try_push(v).err(),
+        |receiver| receiver.try_pop(),
+    );
+}
+
+#[allow(clippy::too_many_lines)]
+fn mpsc_impls(group: &mut BenchmarkGroup<WallTime>, bencher: impl MpscBencher) {
+    bencher.bench(
+        group,
+        "lockness_mpsc",
         mpsc_slot,
         || std::hint::black_box(42),
         |sender, v| match sender.try_send(v) {
@@ -146,10 +192,19 @@ fn multi(group: &mut BenchmarkGroup<WallTime>, bencher: impl MultiBencher) {
         |receiver| receiver.try_recv().ok(),
     );
 
+    bencher.bench(
+        group,
+        "std_mpsc",
+        std::sync::mpsc::channel,
+        || std::hint::black_box(42),
+        |sender, v| sender.send(v).err().map(|SendError(e)| e),
+        |receiver| receiver.try_recv().ok(),
+    );
+
     let mut parameterized = |capacity| {
         bencher.bench(
             group,
-            format!("std({capacity})"),
+            format!("std_mpsc({capacity})"),
             || std::sync::mpsc::sync_channel(capacity),
             || std::hint::black_box(42),
             |sender, v| {
@@ -159,18 +214,6 @@ fn multi(group: &mut BenchmarkGroup<WallTime>, bencher: impl MultiBencher) {
             },
             |receiver| receiver.try_recv().ok(),
         );
-
-        {
-            let q = crossbeam_queue::ArrayQueue::new(capacity);
-            bencher.bench(
-                group,
-                format!("crossbeam_queue({capacity})"),
-                || (&q, &q),
-                || std::hint::black_box(42),
-                |sender, v| sender.push(v).err(),
-                |receiver| receiver.pop(),
-            );
-        }
 
         bencher.bench(
             group,
@@ -213,6 +256,113 @@ fn multi(group: &mut BenchmarkGroup<WallTime>, bencher: impl MultiBencher) {
             },
             |receiver| receiver.try_recv().ok(),
         );
+    };
+
+    parameterized(1);
+    parameterized(32);
+}
+
+#[allow(clippy::too_many_lines)]
+fn mpmc_impls(group: &mut BenchmarkGroup<WallTime>, bencher: impl MpmcBencher) {
+    bencher.bench(
+        group,
+        "lockness_mpmc_single_send",
+        || {
+            let (sender, receiver) = lockness_mpmc();
+            (sender, (receiver, ArrayVec::<i32, 30>::new_const()))
+        },
+        || std::hint::black_box(42),
+        |sender, v| match sender.try_send(v) {
+            Ok(()) => None,
+            Err(TrySendError::Full(v) | TrySendError::Disconnected(v)) => Some(v),
+        },
+        |(receiver, buf)| {
+            buf.pop().or_else(|| {
+                receiver.try_recv().ok().and_then(|nums| {
+                    *buf = nums;
+                    buf.pop()
+                })
+            })
+        },
+    );
+
+    {
+        #[derive(Clone)]
+        struct SendBuf<const N: usize, T>(MpmcSender<T>, ArrayVec<T, N>);
+
+        impl<const N: usize, T> Drop for SendBuf<N, T> {
+            fn drop(&mut self) {
+                let Self(sender, buf) = self;
+                while !buf.is_empty() {
+                    let (Ok(_) | Err(_)) = sender.try_send(&mut *buf);
+                }
+            }
+        }
+
+        bencher.bench(
+            group,
+            "lockness_mpmc_full_send",
+            || {
+                let (sender, receiver) = lockness_mpmc();
+                (
+                    SendBuf(sender, ArrayVec::<i32, 30>::new_const()),
+                    (receiver, ArrayVec::<i32, 30>::new_const()),
+                )
+            },
+            || std::hint::black_box(42),
+            |SendBuf(sender, buf), v| {
+                if let Err(e) = buf.try_push(v) {
+                    let (Ok(_) | Err(_)) = sender.try_send(&mut *buf);
+                    Some(e.element())
+                } else {
+                    None
+                }
+            },
+            |(receiver, buf)| {
+                buf.pop().or_else(|| {
+                    receiver.try_recv().ok().and_then(|nums| {
+                        *buf = nums;
+                        buf.pop()
+                    })
+                })
+            },
+        );
+    }
+
+    bencher.bench(
+        group,
+        "std_mpmc",
+        std::sync::mpmc::channel,
+        || std::hint::black_box(42),
+        |sender, v| sender.send(v).err().map(|SendError(e)| e),
+        |receiver| receiver.try_recv().ok(),
+    );
+
+    let mut parameterized = |capacity| {
+        bencher.bench(
+            group,
+            format!("std_mpmc({capacity})"),
+            || std::sync::mpmc::sync_channel(capacity),
+            || std::hint::black_box(42),
+            |sender, v| {
+                sender.try_send(v).err().map(|e| match e {
+                    TrySendError::Full(v) | TrySendError::Disconnected(v) => v,
+                })
+            },
+            |receiver| receiver.try_recv().ok(),
+        );
+
+        {
+            let q = crossbeam_queue::ArrayQueue::new(capacity);
+            bencher.bench(
+                group,
+                format!("crossbeam_queue({capacity})"),
+                || (&q, &q),
+                || std::hint::black_box(42),
+                |sender, v| sender.push(v).err(),
+                |receiver| receiver.pop(),
+            );
+        }
 
         bencher.bench(
             group,
@@ -250,54 +400,10 @@ fn multi(group: &mut BenchmarkGroup<WallTime>, bencher: impl MultiBencher) {
     parameterized(32);
 }
 
-#[allow(clippy::too_many_lines)]
-fn single(group: &mut BenchmarkGroup<WallTime>, bencher: impl SingleBencher) {
-    bencher.bench(
-        group,
-        "ringbuf(1)",
-        || ringbuf::StaticRb::<_, 1>::default().split(),
-        || std::hint::black_box(42),
-        |sender, v| sender.try_push(v).err(),
-        |receiver| receiver.try_pop(),
-    );
-
-    bencher.bench(
-        group,
-        "ringbuf(32)",
-        || ringbuf::StaticRb::<_, 32>::default().split(),
-        || std::hint::black_box(42),
-        |sender, v| sender.try_push(v).err(),
-        |receiver| receiver.try_pop(),
-    );
-}
-
 fn single_threaded(c: &mut Criterion) {
-    struct Single;
+    struct Spsc;
 
-    impl MultiBencher for Single {
-        fn bench<
-            T: Send,
-            Sender,
-            Receiver,
-            Name: AsRef<str>,
-            Create: FnMut() -> (Sender, Receiver),
-            Make: FnMut() -> T,
-            Send_: FnMut(&mut Sender, T) -> Option<T>,
-            Receive: FnMut(&mut Receiver) -> Option<T>,
-        >(
-            &self,
-            group: &mut BenchmarkGroup<WallTime>,
-            name: Name,
-            create: Create,
-            make: Make,
-            send: Send_,
-            recv: Receive,
-        ) {
-            SingleBencher::bench(self, group, name, create, make, send, recv);
-        }
-    }
-
-    impl SingleBencher for Single {
+    impl SpscBencher for Spsc {
         fn bench<
             T: Send,
             Sender,
@@ -338,28 +444,82 @@ fn single_threaded(c: &mut Criterion) {
         }
     }
 
+    impl MpscBencher for Spsc {
+        fn bench<
+            T: Send,
+            Sender,
+            Receiver,
+            Name: AsRef<str>,
+            Create: FnMut() -> (Sender, Receiver),
+            Make: FnMut() -> T,
+            Send_: FnMut(&mut Sender, T) -> Option<T>,
+            Receive: FnMut(&mut Receiver) -> Option<T>,
+        >(
+            &self,
+            group: &mut BenchmarkGroup<WallTime>,
+            name: Name,
+            create: Create,
+            make: Make,
+            send: Send_,
+            recv: Receive,
+        ) {
+            SpscBencher::bench(self, group, name, create, make, send, recv);
+        }
+    }
+
+    impl MpmcBencher for Spsc {
+        fn bench<
+            T: Send,
+            Sender,
+            Receiver,
+            Name: AsRef<str>,
+            Create: FnMut() -> (Sender, Receiver),
+            Make: FnMut() -> T,
+            Send_: FnMut(&mut Sender, T) -> Option<T>,
+            Receive: FnMut(&mut Receiver) -> Option<T>,
+        >(
+            &self,
+            group: &mut BenchmarkGroup<WallTime>,
+            name: Name,
+            create: Create,
+            make: Make,
+            send: Send_,
+            recv: Receive,
+        ) {
+            SpscBencher::bench(self, group, name, create, make, send, recv);
+        }
+    }
+
     let mut group = c.benchmark_group("single_threaded");
 
-    multi(&mut group, Single);
-    single(&mut group, Single);
+    spsc_impls(&mut group, Spsc);
+    mpsc_impls(&mut group, Spsc);
+    mpmc_impls(&mut group, Spsc);
 }
 
 fn multi_threaded(c: &mut Criterion) {
     let mut threads = 2;
-    let available = thread::available_parallelism().unwrap().get();
+    let available = thread::available_parallelism().unwrap().get() * 2;
 
     while threads <= available {
+        if threads == 2 {
+            let mut group = c.benchmark_group("1_producers");
+            spsc_(&mut group);
+        }
         if threads == 4 {
-            let mut group = c.benchmark_group("3_threads");
+            let mut group = c.benchmark_group("2_producers");
             mpsc_(&mut group, 2);
         }
 
-        let mut group = c.benchmark_group(format!("{threads}_threads"));
-
-        if threads == 2 {
-            spsc_(&mut group);
+        {
+            let num_producers = threads - 1;
+            let mut group = c.benchmark_group(format!("{num_producers}_producers"));
+            mpsc_(&mut group, num_producers);
         }
-        mpsc_(&mut group, threads - 1);
+        {
+            let mut group = c.benchmark_group(format!("{threads}_threads"));
+            mpmc_(&mut group, threads);
+        }
         threads *= 2;
     }
 }
@@ -371,7 +531,7 @@ fn spsc_(group: &mut BenchmarkGroup<WallTime>) {
         mut recv: impl FnMut() -> Option<usize> + Send,
     ) -> Duration {
         thread::scope(|scope| {
-            scope.spawn(|| {
+            let producer = scope.spawn(|| {
                 let mut holding_cell = None;
                 let mut i = 0;
                 loop {
@@ -401,6 +561,8 @@ fn spsc_(group: &mut BenchmarkGroup<WallTime>) {
                 .join()
                 .unwrap();
 
+            producer.join().unwrap();
+
             result
         })
     }
@@ -427,26 +589,32 @@ fn mpsc_(group: &mut BenchmarkGroup<WallTime>, num_producers: usize) {
     fn bench<T: Send>(
         num_producers: u64,
         iters: u64,
-        mut make_tea: impl FnMut() -> T + Clone + Send,
-        mut send: impl FnMut(T) -> Option<T> + Clone + Send,
+        make_tea: impl FnMut() -> T + Clone + Send,
+        send: impl FnMut(T) -> Option<T> + Clone + Send,
         mut recv: impl FnMut() -> Option<T> + Send,
     ) -> Duration {
-        let generate = move || {
-            let mut holding_cell = None;
-            let mut i = 0;
-            loop {
-                holding_cell = if let Some(v) = holding_cell {
-                    send(v)
-                } else if i < iters {
-                    i += 1;
-                    send(make_tea())
-                } else {
-                    break;
-                };
-            }
-        };
-
         thread::scope(|scope| {
+            let producers = (0..num_producers)
+                .map(|_| {
+                    let mut make_tea = make_tea.clone();
+                    let mut send = send.clone();
+                    scope.spawn(move || {
+                        let mut holding_cell = None;
+                        let mut i = 0;
+                        loop {
+                            holding_cell = if let Some(v) = holding_cell {
+                                send(v)
+                            } else if i < iters {
+                                i += 1;
+                                send(make_tea())
+                            } else {
+                                break;
+                            };
+                        }
+                    })
+                })
+                .collect::<Vec<_>>();
+
             let result = scope.spawn(move || {
                 let start = Instant::now();
 
@@ -460,19 +628,20 @@ fn mpsc_(group: &mut BenchmarkGroup<WallTime>, num_producers: usize) {
                 start.elapsed()
             });
 
-            (0..num_producers)
-                .map(|_| scope.spawn(generate.clone()))
-                .for_each(|t| t.join().unwrap());
+            for producer in producers {
+                producer.join().unwrap();
+            }
 
             result.join().unwrap()
         })
     }
 
-    struct Multi {
+    #[derive(Copy, Clone)]
+    struct Mpsc {
         num_producers: u64,
     }
 
-    impl MultiBencher for Multi {
+    impl MpscBencher for Mpsc {
         fn bench<
             T: Send,
             Sender: Send + Clone,
@@ -509,8 +678,136 @@ fn mpsc_(group: &mut BenchmarkGroup<WallTime>, num_producers: usize) {
         }
     }
 
-    multi(group, Multi {
+    impl MpmcBencher for Mpsc {
+        fn bench<
+            T: Send,
+            Sender: Send + Clone,
+            Receiver: Send,
+            Name: AsRef<str>,
+            Create: FnMut() -> (Sender, Receiver),
+            Make: FnMut() -> T + Clone + Send,
+            Send_: FnMut(&mut Sender, T) -> Option<T> + Clone + Send,
+            Receive: FnMut(&mut Receiver) -> Option<T> + Clone + Send,
+        >(
+            &self,
+            group: &mut BenchmarkGroup<WallTime>,
+            name: Name,
+            create: Create,
+            make: Make,
+            send: Send_,
+            recv: Receive,
+        ) {
+            MpscBencher::bench(self, group, name, create, make, send, recv)
+        }
+    }
+
+    let mpsc = Mpsc {
         num_producers: u64::try_from(num_producers).unwrap(),
+    };
+    mpsc_impls(group, mpsc);
+    mpmc_impls(group, mpsc);
+}
+
+#[allow(clippy::too_many_lines)]
+fn mpmc_(group: &mut BenchmarkGroup<WallTime>, num_threads: usize) {
+    fn bench<T: Send>(
+        num_threads: u64,
+        iters: u64,
+        make_tea: impl FnMut() -> T + Clone + Send,
+        send: impl FnMut(T) -> Option<T> + Clone + Send,
+        recv: impl FnMut() -> Option<T> + Clone + Send,
+    ) -> Duration {
+        let die = AtomicBool::new(false);
+        thread::scope(|scope| {
+            let start = Instant::now();
+            let producers = (0..num_threads / 2)
+                .map(|_| {
+                    let mut make_tea = make_tea.clone();
+                    let mut send = send.clone();
+                    scope.spawn(move || {
+                        let mut holding_cell = None;
+                        let mut i = 0;
+                        loop {
+                            holding_cell = if let Some(v) = holding_cell {
+                                send(v)
+                            } else if i < iters {
+                                i += 1;
+                                send(make_tea())
+                            } else {
+                                break;
+                            };
+                        }
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            let consumers = (0..num_threads / 2)
+                .map(|_| {
+                    let mut recv = recv.clone();
+                    let die = &die;
+                    scope.spawn(move || {
+                        while !die.load(Relaxed) {
+                            std::hint::black_box(recv());
+                        }
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            for producer in producers {
+                producer.join().unwrap();
+            }
+            die.store(true, Relaxed);
+            for consumer in consumers {
+                consumer.join().unwrap();
+            }
+
+            start.elapsed()
+        })
+    }
+
+    struct Mpmc {
+        num_threads: u64,
+    }
+
+    impl MpmcBencher for Mpmc {
+        fn bench<
+            T: Send,
+            Sender: Send + Clone,
+            Receiver: Send + Clone,
+            Name: AsRef<str>,
+            Create: FnMut() -> (Sender, Receiver),
+            Make: FnMut() -> T + Clone + Send,
+            Send_: FnMut(&mut Sender, T) -> Option<T> + Clone + Send,
+            Receive: FnMut(&mut Receiver) -> Option<T> + Clone + Send,
+        >(
+            &self,
+            group: &mut BenchmarkGroup<WallTime>,
+            name: Name,
+            mut create: Create,
+            make: Make,
+            send: Send_,
+            recv: Receive,
+        ) {
+            group.bench_function(name.as_ref(), |b| {
+                b.iter_custom(|iters| {
+                    let mut send = send.clone();
+                    let mut recv = recv.clone();
+                    let (mut sender, mut receiver) = create();
+                    let make = make.clone();
+                    bench(
+                        self.num_threads,
+                        iters,
+                        make,
+                        move |v| send(&mut sender, v),
+                        move || recv(&mut receiver),
+                    )
+                });
+            });
+        }
+    }
+
+    mpmc_impls(group, Mpmc {
+        num_threads: u64::try_from(num_threads).unwrap(),
     });
 }
 
