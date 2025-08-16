@@ -1,6 +1,6 @@
 pub mod lockness_vecs
-pub struct lockness_vecs::ClosureVec<F: core::ops::function::FnOnce>
-impl<F: core::ops::function::FnOnce> lockness_vecs::ClosureVec<F>
+pub struct lockness_vecs::ClosureVec<F: core::ops::function::FnOnce()>
+impl<F: core::ops::function::FnOnce()> lockness_vecs::ClosureVec<F>
 pub fn lockness_vecs::ClosureVec<F>::clear(&mut self)
 pub unsafe const fn lockness_vecs::ClosureVec<F>::from_raw(ptr: *mut Self) -> Self
 pub fn lockness_vecs::ClosureVec<F>::into_raw(self) -> *mut Self
@@ -9,12 +9,12 @@ pub fn lockness_vecs::ClosureVec<F>::new() -> Self
 pub fn lockness_vecs::ClosureVec<F>::pop_and_run(&mut self) -> bool
 pub fn lockness_vecs::ClosureVec<F>::push(&mut self, value: F)
 pub fn lockness_vecs::ClosureVec<F>::update_type(&mut self)
-impl<F: core::ops::function::FnOnce> core::default::Default for lockness_vecs::ClosureVec<F>
+impl<F: core::ops::function::FnOnce()> core::default::Default for lockness_vecs::ClosureVec<F>
 pub fn lockness_vecs::ClosureVec<F>::default() -> Self
-impl<F: core::ops::function::FnOnce> core::ops::drop::Drop for lockness_vecs::ClosureVec<F>
+impl<F: core::ops::function::FnOnce()> core::ops::drop::Drop for lockness_vecs::ClosureVec<F>
 pub fn lockness_vecs::ClosureVec<F>::drop(&mut self)
-impl<T: core::ops::function::FnOnce + core::marker::Send> core::marker::Send for lockness_vecs::ClosureVec<T>
-impl<T: core::ops::function::FnOnce + core::marker::Sync> core::marker::Sync for lockness_vecs::ClosureVec<T>
+impl<T: core::ops::function::FnOnce() + core::marker::Send> core::marker::Send for lockness_vecs::ClosureVec<T>
+impl<T: core::ops::function::FnOnce() + core::marker::Sync> core::marker::Sync for lockness_vecs::ClosureVec<T>
 impl<F> core::marker::Freeze for lockness_vecs::ClosureVec<F>
 impl<F> core::marker::Unpin for lockness_vecs::ClosureVec<F>
 impl<F> core::panic::unwind_safe::RefUnwindSafe for lockness_vecs::ClosureVec<F> where F: core::panic::unwind_safe::RefUnwindSafe

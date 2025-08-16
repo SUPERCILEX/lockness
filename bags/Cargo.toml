@@ -11,21 +11,20 @@ license.workspace = true
 
 [dependencies]
 arrayvec = "0.7.6"
-bitflags = "2.9.1"
-rustix = { version = "1.0.7", features = ["thread", "linux_latest"] }
+bitflags = "2.9.2"
+rustix = { version = "1.0.8", features = ["thread", "linux_latest"] }
 
 [dev-dependencies]
-async-channel = "2.3.1"
+async-channel = "2.5.0"
 concurrent-queue = "2.5.0"
-criterion = "0.6.0"
+criterion = "0.7.0"
 crossbeam-channel = "0.5.15"
-crossbeam-deque = "0.8.6"
 crossbeam-queue = "0.3.12"
 expect-test = "1.5.1"
 flume = "0.11.1"
 ringbuf = "0.4.8"
-rstest = "0.25.0"
-supercilex-tests = "0.4.19"
+rstest = "0.26.1"
+supercilex-tests = "0.4.21"
 thingbuf = "0.1.6"
 
 [[bench]]
