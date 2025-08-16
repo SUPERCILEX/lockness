@@ -719,6 +719,32 @@ mod tests {
         }
     }
 
+    #[test]
+    fn drops_multi() {
+        let (sender, receiver) = mpmc::<Box<i32>>();
+        for i in 0..30 {
+            let sender = sender.clone();
+            sender.send(Box::new(i)).unwrap();
+        }
+        sender.try_send(Box::new(666)).unwrap_err();
+
+        {
+            let mut nums = receiver
+                .clone()
+                .recv()
+                .unwrap()
+                .into_iter()
+                .map(|n| *n)
+                .collect::<Vec<_>>();
+            nums.sort_unstable();
+            let expected = (0..30).collect::<Vec<_>>();
+            assert_eq!(&expected, &nums);
+        }
+        receiver.try_recv().unwrap_err();
+        drop(sender);
+        receiver.recv().unwrap_err();
+    }
+
     #[rstest]
     #[case(send_polyfill::<Box<usize>>, recv_polyfill::<Box<usize>>)]
     #[case(MpmcSender::<Box<usize>>::send, MpmcReceiver::<Box<usize>>::recv)]
@@ -785,5 +811,62 @@ mod tests {
         let expected: Vec<_> = (0..1000).flat_map(|i| [i, i]).collect();
 
         assert_eq!(expected, actual);
+    }
+
+    #[rstest]
+    #[case(send_polyfill::<Box<i32>>, recv_polyfill::<Box<i32>>)]
+    #[case(MpmcSender::<Box<i32>>::send, MpmcReceiver::<Box<i32>>::recv)]
+    fn take_one_down_pass_it_around(
+        #[case] send: SendFn<Box<i32>>,
+        #[case] recv: RecvFn<Box<i32>>,
+    ) {
+        let (sender, receiver) = mpmc();
+
+        let mut writers = Vec::with_capacity(3);
+        let mut readers = Vec::with_capacity(3);
+
+        for n in 0..3 {
+            writers.push(thread::spawn({
+                let sender = sender.clone();
+                move || {
+                    for i in (0..3000).filter(|i| i % 3 == n) {
+                        send(&sender, Box::new(i)).unwrap();
+                    }
+                }
+            }));
+            readers.push(thread::spawn({
+                let receiver = receiver.clone();
+                move || {
+                    let mut all = Vec::new();
+                    loop {
+                        match recv(&receiver) {
+                            Ok(nums) => {
+                                for num in nums {
+                                    all.push(num);
+                                }
+                            }
+                            Err(RecvError) => break all,
+                        }
+                    }
+                }
+            }));
+        }
+        drop(sender);
+        drop(receiver);
+
+        for writer in writers {
+            let () = writer.join().unwrap();
+        }
+
+        let mut nums = Vec::with_capacity(3000);
+        for reader in readers {
+            nums.append(&mut reader.join().unwrap());
+        }
+        nums.sort_unstable();
+        let nums = nums.into_iter().map(|n| *n).collect::<Vec<_>>();
+
+        let expected: Vec<_> = (0..3000).collect();
+
+        assert_eq!(expected, nums);
     }
 }

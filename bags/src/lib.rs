@@ -2,10 +2,7 @@ mod cache_padded;
 mod mpmc;
 mod slot;
 
-use std::{
-    process::abort,
-    sync::atomic::{AtomicU32, AtomicU64},
-};
+use std::{process::abort, sync::atomic::AtomicU32};
 
 pub use mpmc::{SendBuffer, SendBufferContainer, mpmc};
 use rustix::{
@@ -49,7 +46,7 @@ fn abort_with_message(m: &str) {
 
 /// Uses the high bits of a u64 to make a u32 futex
 #[cfg(all(target_arch = "x86_64", not(miri)))]
-const fn u64_to_futex(word: &AtomicU64) -> &AtomicU32 {
+const fn u64_to_futex(word: &std::sync::atomic::AtomicU64) -> &AtomicU32 {
     if cfg!(target_endian = "big") {
         let ptr = word.as_ptr().cast::<u32>();
         unsafe { AtomicU32::from_ptr(ptr) }
