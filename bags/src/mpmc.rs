@@ -56,8 +56,9 @@ pub struct Receiver<const N: usize, T> {
 }
 
 unsafe impl<const N: usize, T: Send> Send for Sender<N, T> {}
-unsafe impl<const N: usize, T> Sync for Sender<N, T> {}
+unsafe impl<const N: usize, T: Send> Sync for Sender<N, T> {}
 unsafe impl<const N: usize, T: Send> Send for Receiver<N, T> {}
+unsafe impl<const N: usize, T: Send> Sync for Receiver<N, T> {}
 
 bitflags! {
     #[derive(Copy, Clone, Default, Debug)]

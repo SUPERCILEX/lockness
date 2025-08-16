@@ -52,7 +52,7 @@ pub struct Receiver<T> {
 }
 
 unsafe impl<T: Send> Send for Sender<T> {}
-unsafe impl<T> Sync for Sender<T> {}
+unsafe impl<T: Send> Sync for Sender<T> {}
 unsafe impl<T: Send> Send for Receiver<T> {}
 
 #[cfg(all(target_arch = "x86_64", not(miri)))]
