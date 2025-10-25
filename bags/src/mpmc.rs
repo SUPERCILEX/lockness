@@ -1,6 +1,5 @@
 use std::{
     cell::UnsafeCell,
-    marker::PhantomData,
     mem::MaybeUninit,
     num::NonZeroUsize,
     ptr,
@@ -79,7 +78,7 @@ impl<const N: usize, T> Drop for Inner<N, T> {
         } = self;
 
         let values = recv.load(Acquire) & !Status::all().bits();
-        drain_mask(values, (bag, PhantomData), |slot| {
+        drain_mask(values, bag, |slot| {
             let slot = slot.get_mut();
             unsafe {
                 slot.assume_init_drop();
@@ -297,7 +296,7 @@ impl<const N: usize, T> Sender<N, T> {
         debug_assert!(usize::try_from(reserved.count_ones()).unwrap() <= items);
 
         fence(Acquire);
-        drain_mask(reserved, (bag, PhantomData), |slot| {
+        drain_mask(reserved, bag, |slot| {
             let slot = slot.get();
             let value = MaybeUninit::new(data.take());
             unsafe {
@@ -453,7 +452,7 @@ impl<const N: usize, T> Receiver<N, T> {
         let mut values = ArrayVec::new_const();
         debug_assert!(claimed.count_ones() as usize <= N);
         debug_assert!(claimed > 0);
-        drain_mask(claimed, (bag, PhantomData), |slot| {
+        drain_mask(claimed, bag, |slot| {
             let slot = slot.get();
             let value = unsafe { ptr::read(slot).assume_init() };
             if cfg!(debug_assertions) {
@@ -520,39 +519,27 @@ impl<const N: usize, T> Drop for Receiver<N, T> {
     }
 }
 
-trait DrainMaskBuf<const N: usize, T> {
-    type F;
-
-    fn do_(&mut self, f: &mut Self::F, i: usize);
+trait DrainMaskBuf<const N: usize, T, F> {
+    fn do_(&mut self, f: &mut F, i: usize);
 }
 
-impl<const N: usize, T, F: FnMut(&T)> DrainMaskBuf<N, T>
-    for (&[CachePadded<T>; N], PhantomData<F>)
-{
-    type F = F;
-
+impl<const N: usize, T, F: FnMut(&T)> DrainMaskBuf<N, T, F> for &[CachePadded<T>; N] {
     fn do_(&mut self, f: &mut F, i: usize) {
-        let (bag, _) = self;
-        f(&bag[i]);
+        f(&self[i]);
     }
 }
 
-impl<const N: usize, T, F: FnMut(&mut T)> DrainMaskBuf<N, T>
-    for (&mut [CachePadded<T>; N], PhantomData<F>)
-{
-    type F = F;
-
+impl<const N: usize, T, F: FnMut(&mut T)> DrainMaskBuf<N, T, F> for &mut [CachePadded<T>; N] {
     fn do_(&mut self, f: &mut F, i: usize) {
-        let (bag, _) = self;
-        f(&mut bag[i]);
+        f(&mut self[i]);
     }
 }
 
 #[inline]
-fn drain_mask<const N: usize, T, Buf: DrainMaskBuf<N, T>>(
+fn drain_mask<const N: usize, T, F, Buf: DrainMaskBuf<N, T, F>>(
     mut mask: u32,
     mut bag: Buf,
-    mut f: Buf::F,
+    mut f: F,
 ) {
     loop {
         let i = mask.leading_zeros();
