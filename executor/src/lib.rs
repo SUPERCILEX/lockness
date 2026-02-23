@@ -1,6 +1,8 @@
+#![ doc = include_str!( "../README.md")]
+
 mod error;
 
-use std::num::NonZeroUsize;
+use std::{env, marker::PhantomData, num::NonZeroUsize, sync::OnceLock, thread};
 
 use bon::Builder;
 pub use error::{Error, JoinError};
@@ -26,11 +28,33 @@ pub mod config {
     pub struct Lifo;
 }
 
+fn default_max_threads() -> NonZeroUsize {
+    static ENV_NUM_THREADS: OnceLock<Option<NonZeroUsize>> = OnceLock::new();
+
+    let env_num_threads = *ENV_NUM_THREADS.get_or_init(|| {
+        env::var_os("MAX_LOCKNESS_THREADS").and_then(|s| {
+            let num_threads = s
+                .to_str()
+                .and_then(|s| s.parse::<isize>().ok())
+                .unwrap_or(-1);
+            if num_threads < 1 {
+                None
+            } else {
+                Some(NonZeroUsize::new(usize::try_from(num_threads).unwrap()).unwrap())
+            }
+        })
+    });
+
+    env_num_threads
+        .unwrap_or_else(|| thread::available_parallelism().unwrap_or(NonZeroUsize::new(1).unwrap()))
+}
+
 #[derive(Builder)]
 #[builder(builder_type(vis = "pub", name = LocknessExecutorBuilder))]
 #[builder(finish_fn(vis = "", name = build_internal))]
 struct DynamicParams {
-    max_threads: Option<NonZeroUsize>,
+    #[builder(default = default_max_threads())]
+    max_threads: NonZeroUsize,
 }
 
 impl LocknessExecutorBuilder {
@@ -69,8 +93,10 @@ pub struct Spawner<C> {
     inner: Inner<C>,
 }
 
-pub struct SpawnBuffer<C> {
+pub struct SpawnBuffer<'spawner, C, F> {
     inner: Inner<C>,
+    _task: PhantomData<F>,
+    _tie: PhantomData<&'spawner ()>,
 }
 
 pub struct Finisher<E> {
@@ -78,7 +104,7 @@ pub struct Finisher<E> {
 }
 
 impl<C: Config> LocknessExecutor<C> {
-    pub fn spawner(&self) -> Spawner<C> {
+    pub fn spawner(&self) -> &Spawner<C> {
         todo!()
     }
 
@@ -87,63 +113,56 @@ impl<C: Config> LocknessExecutor<C> {
     }
 }
 
-impl<C> Spawner<C> {
-    pub fn buffer(&self) -> SpawnBuffer<C> {
+impl<C: Config> Spawner<C> {
+    /// Acquire a task buffer in which to prepare tasks for scheduling.
+    pub fn buffered<F>(&self) -> SpawnBuffer<'_, C, F> {
         todo!()
     }
 
-    pub fn yield_(&self) {
-        todo!()
-    }
-
-    pub fn drain(&self) {
-        todo!(
-            "Blocks until all local tasks have been offloaded to other threads. Does nothing if \
-             max_threads=1"
-        )
-    }
-}
-
-impl<C> SpawnBuffer<C> {
+    /// Tries to schedule submitted tasks on other threads.
+    ///
+    /// WARNING: a [SpawnBuffer] must be dropped before a [Spawner] can schedule
+    /// its tasks, so calling flush without first dropping [SpawnBuffer]s does
+    /// nothing.
+    ///
+    /// This will be called automatically on drop.
     pub fn flush(&self) {
         todo!()
     }
 }
 
-impl<C: Config + Clone + Send + 'static> Spawner<C> {
-    pub fn spawn0<F: FnOnce(&mut C::ThreadLocalState) -> Result<(), C::Error> + Send + 'static>(
-        &self,
-        f: F,
-    ) {
+/// A task buffer of type `F`.
+///
+/// Note that tasks submitted via the buffer are NOT scheduled to run on other
+/// threads until a call to `flush`. Additionally, unlike [Spawner], dropping
+/// this type does not trigger a scheduling action to allow for batched
+/// scheduling across task types.
+impl<'spawner, C, F> SpawnBuffer<'spawner, C, F> {
+    /// Tries to schedule _this buffer's_ submitted tasks on other threads.
+    ///
+    /// Use [Spawner::flush] after dropping this type if you would like to
+    /// schedule tasks across types.
+    pub fn flush(&self) {
+        todo!()
     }
 }
 
-impl<C: Config<AllowTasksToSpawnMoreTasks = True> + Clone + Send + 'static> Spawner<C> {
-    pub fn spawn1<
-        F: FnOnce(&Self, &mut C::ThreadLocalState) -> Result<(), C::Error> + Send + 'static,
-    >(
-        &self,
-        f: F,
-    ) {
-    }
+impl<
+    'a,
+    C: Config + Clone + Send + 'static,
+    F: FnOnce(&mut C::ThreadLocalState) -> Result<(), C::Error> + Send + 'static,
+> SpawnBuffer<'a, C, F>
+{
+    pub fn spawn(&self, f: F) {}
 }
 
-impl<C: Config + Clone + Send + 'static> SpawnBuffer<C> {
-    pub fn spawn0<F: FnOnce(&mut C::ThreadLocalState) -> Result<(), C::Error> + Send + 'static>(
-        &self,
-        f: F,
-    ) {
-    }
-}
-
-impl<C: Config<AllowTasksToSpawnMoreTasks = True> + Clone + Send + 'static> SpawnBuffer<C> {
-    pub fn spawn1<
-        F: FnOnce(&Spawner<C>, &mut C::ThreadLocalState) -> Result<(), C::Error> + Send + 'static,
-    >(
-        &self,
-        f: F,
-    ) {
-    }
+impl<
+    'a,
+    C: Config<AllowTasksToSpawnMoreTasks = True> + Clone + Send + 'static,
+    F: FnOnce(&Spawner<C>, &mut C::ThreadLocalState) -> Result<(), C::Error> + Send + 'static,
+> SpawnBuffer<'a, C, F>
+{
+    pub fn spawn_recursive(&self, f: F) {}
 }
 
 impl<E> Iterator for Finisher<E> {

@@ -10,9 +10,9 @@ categories = ["concurrency", "asynchronous", "data-structures"]
 license.workspace = true
 
 [dev-dependencies]
-criterion = "0.7.0"
-proptest = "1.7.0"
-proptest-derive = "0.6.0"
+criterion = "0.8.2"
+proptest = "1.10.0"
+proptest-derive = "0.8.0"
 supercilex-tests = { version = "0.4.21", default-features = false, features = ["api"] }
 
 [[bench]]

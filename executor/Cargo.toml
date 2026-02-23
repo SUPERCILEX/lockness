@@ -10,11 +10,11 @@ categories = ["concurrency", "asynchronous", "data-structures"]
 license.workspace = true
 
 [dependencies]
-bon = "3.7.0"
+bon = "3.9.0"
 
 [dev-dependencies]
-criterion = "0.7.0"
-flume = "0.11.1"
+criterion = "0.8.2"
+flume = "0.12.0"
 rayon = "1.11.0"
 supercilex-tests = { version = "0.4.21", default-features = false, features = ["api"] }
-tokio = "1.47.1"
+tokio = "1.49.0"
