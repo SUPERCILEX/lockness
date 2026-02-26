@@ -8,8 +8,8 @@ use std::{
 
 struct Header<M> {
     metadata: M,
-    value_size: usize,
-    alignment: usize,
+    value_size: u32,
+    alignment: u32,
     len: usize,
     capacity: usize,
 }
@@ -74,7 +74,10 @@ impl<M, T> FreestandingVec<M, T> {
 
         let _metadata_for_drop = unsafe { ptr::from_mut(metadata).read() };
         unsafe {
-            let layout = Layout::from_size_align_unchecked(self.capacity_bytes(), alignment);
+            let layout = Layout::from_size_align_unchecked(
+                self.capacity_bytes(),
+                usize::try_from(alignment).unwrap(),
+            );
             dealloc(self.data.cast().as_ptr(), layout);
         }
         self.data = NonNull::dangling();
@@ -161,9 +164,12 @@ impl<M, T> FreestandingVec<M, T> {
         unsafe { Header::from_mut(self) }.capacity = new_capacity;
     }
 
+    const HEADER_ALIGNMENT: u32 = align_of::<HeaderSpace<M, T>>() as u32;
+    const ELEM_SIZE: u32 = size_of::<T>() as u32;
+
     pub fn init(&mut self, metadata: M) {
         if self.is_allocated()
-            && unsafe { Header::from_ref(self) }.alignment != align_of::<HeaderSpace<M, T>>()
+            && unsafe { Header::from_ref(self) }.alignment != Self::HEADER_ALIGNMENT
         {
             self.deallocate();
         }
@@ -181,8 +187,8 @@ impl<M, T> FreestandingVec<M, T> {
         let ptr = self.data.cast::<Header<M>>().as_ptr();
         let header = Header {
             metadata,
-            value_size: size_of::<T>(),
-            alignment: align_of::<HeaderSpace<M, T>>(),
+            value_size: Self::ELEM_SIZE,
+            alignment: Self::HEADER_ALIGNMENT,
             len: 0,
             capacity,
         };
@@ -226,10 +232,17 @@ impl<M, T> FreestandingVec<M, T> {
             capacity: _,
         } = unsafe { Header::from_mut(self) };
         let ptr = {
-            let base =
-                cmp::max(size_of::<HeaderSpace<M, ()>>(), value_size).next_multiple_of(alignment);
+            let base = cmp::max(
+                size_of::<HeaderSpace<M, ()>>(),
+                usize::try_from(value_size).unwrap(),
+            )
+            .next_multiple_of(usize::try_from(alignment).unwrap());
             unsafe {
-                NonNull::new_unchecked(ptr.cast::<u8>().as_ptr().add(base + len * value_size))
+                NonNull::new_unchecked(
+                    ptr.cast::<u8>()
+                        .as_ptr()
+                        .add(base + len * usize::try_from(value_size).unwrap()),
+                )
             }
         };
 
