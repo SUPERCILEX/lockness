@@ -27,18 +27,16 @@ impl<M> Header<M> {
     }
 }
 
-union FirstEntry<M, T> {
+union HeaderSpace<M, T> {
     _header: ManuallyDrop<Header<M>>,
     _t: ManuallyDrop<T>, // Used to ensure proper alignment
 }
 
 pub struct FreestandingVec<M, T> {
-    data: NonNull<FirstEntry<M, T>>,
+    data: NonNull<HeaderSpace<M, T>>,
 }
 
 unsafe impl<M: Send, T: Send> Send for FreestandingVec<M, T> {}
-
-unsafe impl<M: Sync, T: Sync> Sync for FreestandingVec<M, T> {}
 
 impl<M, T> FreestandingVec<M, T> {
     const MIN_NON_ZERO_CAP: usize = if size_of::<T>() == 1 {
@@ -48,7 +46,7 @@ impl<M, T> FreestandingVec<M, T> {
     } else {
         1
     } * size_of::<T>()
-        + size_of::<FirstEntry<M, T>>();
+        + size_of::<HeaderSpace<M, T>>();
 
     #[must_use]
     pub fn new(metadata: M) -> Self {
@@ -60,7 +58,11 @@ impl<M, T> FreestandingVec<M, T> {
     }
 
     fn deallocate(&mut self) {
-        debug_assert!(self.is_allocated());
+        if !self.is_allocated() {
+            // See the panic_in_drop_due_to_init_alignment_change test for an example of
+            // when this is possible
+            return;
+        }
 
         let &mut Header {
             ref mut metadata,
@@ -83,12 +85,17 @@ impl<M, T> FreestandingVec<M, T> {
     }
 
     #[must_use]
-    pub fn into_raw(self) -> *mut () {
+    pub fn into_raw(self) -> *mut Self {
         let this = ManuallyDrop::new(self);
         this.data.cast().as_ptr()
     }
 
-    pub const unsafe fn from_raw(ptr: *mut ()) -> Self {
+    /// # Safety
+    ///
+    /// T can change at any time for popping. To change T for pushing, the vec
+    /// must be empty and [`FreestandingVec::init`] must be called. M can never
+    /// be changed.
+    pub const unsafe fn from_raw<U>(ptr: *mut FreestandingVec<M, U>) -> Self {
         Self {
             data: unsafe { NonNull::new_unchecked(ptr.cast()) },
         }
@@ -114,7 +121,7 @@ impl<M, T> FreestandingVec<M, T> {
 
         let capacity = Self::MIN_NON_ZERO_CAP;
         let layout =
-            unsafe { Layout::from_size_align_unchecked(capacity, align_of::<FirstEntry<M, T>>()) };
+            unsafe { Layout::from_size_align_unchecked(capacity, align_of::<HeaderSpace<M, T>>()) };
         let ptr = unsafe { alloc(layout) };
 
         if let Some(ptr) = NonNull::new(ptr.cast()) {
@@ -131,7 +138,7 @@ impl<M, T> FreestandingVec<M, T> {
             return;
         }
 
-        let required_cap = (self.len() * size_of::<T>() + size_of::<FirstEntry<M, T>>())
+        let required_cap = (self.len() * size_of::<T>() + size_of::<HeaderSpace<M, T>>())
             .checked_add(additional_bytes)
             .expect("Requested allocation overflows");
 
@@ -142,7 +149,7 @@ impl<M, T> FreestandingVec<M, T> {
 
         let new_capacity = cmp::max(og_cap.saturating_mul(2), required_cap);
         let layout =
-            unsafe { Layout::from_size_align_unchecked(og_cap, align_of::<FirstEntry<M, T>>()) };
+            unsafe { Layout::from_size_align_unchecked(og_cap, align_of::<HeaderSpace<M, T>>()) };
         let ptr = unsafe { realloc(self.data.cast().as_ptr(), layout, new_capacity) };
 
         if let Some(ptr) = NonNull::new(ptr.cast()) {
@@ -155,7 +162,9 @@ impl<M, T> FreestandingVec<M, T> {
     }
 
     pub fn init(&mut self, metadata: M) {
-        if !self.data.as_ptr().is_aligned() && self.is_allocated() {
+        if self.is_allocated()
+            && unsafe { Header::from_ref(self) }.alignment != align_of::<HeaderSpace<M, T>>()
+        {
             self.deallocate();
         }
         if self.is_allocated() && self.capacity_bytes() < Self::MIN_NON_ZERO_CAP {
@@ -163,7 +172,7 @@ impl<M, T> FreestandingVec<M, T> {
         }
 
         let was_allocated = self.is_allocated();
-        let capacity = if self.is_allocated() {
+        let capacity = if was_allocated {
             self.capacity_bytes()
         } else {
             self.allocate()
@@ -173,7 +182,7 @@ impl<M, T> FreestandingVec<M, T> {
         let header = Header {
             metadata,
             value_size: size_of::<T>(),
-            alignment: align_of::<FirstEntry<M, T>>(),
+            alignment: align_of::<HeaderSpace<M, T>>(),
             len: 0,
             capacity,
         };
@@ -212,12 +221,13 @@ impl<M, T> FreestandingVec<M, T> {
         let &mut Header {
             ref mut metadata,
             value_size,
-            alignment: _,
+            alignment,
             len: ref mut header_len,
             capacity: _,
         } = unsafe { Header::from_mut(self) };
         let ptr = {
-            let base = cmp::max(size_of::<FirstEntry<M, ()>>(), value_size);
+            let base =
+                cmp::max(size_of::<HeaderSpace<M, ()>>(), value_size).next_multiple_of(alignment);
             unsafe {
                 NonNull::new_unchecked(ptr.cast::<u8>().as_ptr().add(base + len * value_size))
             }
@@ -228,8 +238,11 @@ impl<M, T> FreestandingVec<M, T> {
     }
 }
 
+/// Note that elements are not dropped: calling this on a non-empty vec will
+/// result in leaking the elements.
 impl<M, T> Drop for FreestandingVec<M, T> {
     fn drop(&mut self) {
+        debug_assert!(!self.is_allocated() || self.is_empty());
         self.deallocate();
     }
 }
@@ -239,13 +252,12 @@ mod tests {
     use std::mem::transmute;
 
     use proptest::prelude::*;
-    use proptest_derive::Arbitrary;
 
     use super::*;
 
     #[test]
     fn validate_empty() {
-        let mut v = FreestandingVec::new(());
+        let mut v = FreestandingVec::new(Box::new(88));
         assert!(v.is_empty());
 
         for i in 0..3 {
@@ -255,7 +267,7 @@ mod tests {
 
         for _ in 0..3 {
             assert!(!v.is_empty());
-            assert!(v.pop(|(), _| ()).is_some());
+            assert!(v.pop(|_, _| ()).is_some());
         }
         assert!(v.is_empty());
     }
@@ -267,33 +279,35 @@ mod tests {
 
     #[test]
     fn validate_type_erased_ops() {
-        let mut v = FreestandingVec::new(|| ());
+        let mut v = FreestandingVec::new(Box::new(88));
 
         v.push("42".to_string());
 
-        let mut v = unsafe { transmute::<_, FreestandingVec<(), ()>>(v) };
+        let mut v = unsafe {
+            transmute::<FreestandingVec<Box<i32>, String>, FreestandingVec<Box<i32>, ()>>(v)
+        };
         assert_eq!(
             Some("42".to_string()),
-            v.pop(|(), ptr| unsafe { ptr.cast::<String>().as_ptr().read() })
+            v.pop(|_, ptr| unsafe { ptr.cast::<String>().as_ptr().read() })
         );
     }
 
     #[test]
     fn validate_raw() {
-        let mut v = FreestandingVec::new(|| ());
-        v.push(2048u32);
+        let mut v = FreestandingVec::new(Box::new(88));
+        v.push(Box::new(2048u32));
 
-        let mut v = unsafe { FreestandingVec::<(), _>::from_raw(v.into_raw()) };
-        v.push(1234u32);
+        let mut v = unsafe { FreestandingVec::from_raw(v.into_raw()) };
+        v.push(Box::new(1234u32));
 
-        let mut v = unsafe { FreestandingVec::<(), ()>::from_raw(v.into_raw().cast()) };
+        let mut v = unsafe { FreestandingVec::<_, ()>::from_raw(v.into_raw()) };
         assert_eq!(
             Some(1234),
-            v.pop(|(), ptr| unsafe { ptr.cast::<u32>().as_ptr().read() })
+            v.pop(|_, ptr| *unsafe { ptr.cast::<Box<u32>>().as_ptr().read() })
         );
         assert_eq!(
             Some(2048),
-            v.pop(|(), ptr| unsafe { ptr.cast::<u32>().as_ptr().read() })
+            v.pop(|_, ptr| *unsafe { ptr.cast::<Box<u32>>().as_ptr().read() })
         );
     }
 
@@ -306,6 +320,15 @@ mod tests {
         }
         for i in (0..1000).rev() {
             assert_eq!(Some(i), v.pop(|(), ptr| unsafe { ptr.as_ptr().read() }));
+        }
+
+        let mut v = FreestandingVec::new(());
+
+        for _ in 0..1000 {
+            v.push(());
+        }
+        for _ in 0..1000 {
+            assert_eq!(Some(()), v.pop(|(), ptr| unsafe { ptr.as_ptr().read() }));
         }
     }
 
@@ -328,6 +351,55 @@ mod tests {
                 })
             );
         }
+    }
+
+    #[test]
+    fn increase_value_alignment() {
+        let mut v = FreestandingVec::new(());
+        v.push(());
+        v.pop(|_, _| ());
+        let mut v = unsafe { FreestandingVec::<_, u128>::from_raw(v.into_raw()) };
+        v.init(());
+    }
+
+    #[test]
+    fn decrease_value_alignment() {
+        #[repr(align(64))]
+        #[derive(Debug, PartialEq, Clone, Copy)]
+        struct Align64(u8);
+
+        let mut v = FreestandingVec::new(());
+        let original_value = Align64(42);
+        v.push(original_value);
+
+        let mut v =
+            unsafe { transmute::<FreestandingVec<(), Align64>, FreestandingVec<(), ()>>(v) };
+
+        assert_eq!(
+            Some(original_value),
+            v.pop(|_, ptr| unsafe { ptr.cast::<Align64>().as_ptr().read() })
+        );
+    }
+
+    #[test]
+    fn evil_alignment() {
+        #[repr(align(64))]
+        #[derive(Debug, PartialEq, Copy, Clone)]
+        struct Align64(u8);
+
+        type LargeM = [u8; 33];
+        let mut v = FreestandingVec::<LargeM, Align64>::new([0; 33]);
+        let original_value = Align64(42);
+        v.push(original_value);
+
+        let mut v = unsafe {
+            transmute::<FreestandingVec<LargeM, Align64>, FreestandingVec<LargeM, ()>>(v)
+        };
+
+        assert_eq!(
+            Some(original_value),
+            v.pop(|_, ptr| unsafe { ptr.cast::<Align64>().as_ptr().read() })
+        );
     }
 
     #[test]
@@ -359,7 +431,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Lol get fucked")]
-    fn panic_in_drop() {
+    fn panic_in_metadata_drop() {
         #[derive(Debug)]
         struct P;
 
@@ -371,32 +443,57 @@ mod tests {
 
         let mut v = FreestandingVec::new(P);
         v.push(());
+        v.pop(|&mut P, _| ());
+    }
+
+    #[test]
+    #[should_panic(expected = "Lol get fucked")]
+    fn panic_in_drop_due_to_init_alignment_change() {
+        #[derive(Debug)]
+        struct P {
+            should_panic: bool,
+        }
+
+        impl Drop for P {
+            fn drop(&mut self) {
+                // We can't panic twice because in unwinding
+                if self.should_panic {
+                    panic!("Lol get fucked");
+                }
+            }
+        }
+
+        let mut v = FreestandingVec::new(P { should_panic: true });
+        v.push(());
+        v.pop(|_, _| ());
+        let mut v = unsafe { FreestandingVec::<_, u128>::from_raw(v.into_raw()) };
+        v.init(P {
+            should_panic: false,
+        });
     }
 
     #[test]
     fn validate_reuse_with_different_type() {
-        fn use_<F: Clone>(tasks: &mut FreestandingVec<(), ()>, f: F) {
-            let tasks = unsafe { &mut *ptr::from_mut(tasks).cast::<FreestandingVec<(), F>>() };
-            tasks.init(());
+        fn use_<F: Clone>(tasks: &mut FreestandingVec<Box<u32>, ()>, f: F) {
+            let tasks =
+                unsafe { &mut *ptr::from_mut(tasks).cast::<FreestandingVec<Box<u32>, F>>() };
+            tasks.init(Box::new(42));
             for _ in 0..4 {
                 tasks.push(f.clone());
             }
             for _ in 0..4 {
-                assert!(
-                    tasks
-                        .pop(|(), ptr| unsafe { ptr.as_ptr().read() })
-                        .is_some()
-                );
+                assert!(tasks.pop(|_, ptr| unsafe { ptr.as_ptr().read() }).is_some());
             }
         }
 
-        let mut tasks = FreestandingVec::new(());
+        let mut tasks = FreestandingVec::new(Box::new(88));
 
         use_(&mut tasks, 42usize);
         use_(&mut tasks, vec!["a", "b", "c"]);
     }
 
-    #[derive(Copy, Clone, Eq, PartialEq, Debug, Arbitrary)]
+    #[derive(Copy, Clone, Eq, PartialEq, Debug, proptest_derive::Arbitrary)]
+    #[cfg(not(miri))]
     enum Path {
         Push,
         Pop,
@@ -442,6 +539,9 @@ mod tests {
                         v = FreestandingVec::new(Big((0..i).rev().collect()));
                     }
                 }
+            }
+            while !v.is_empty() {
+                v.pop(|_, _| ());
             }
         }
     }

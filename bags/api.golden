@@ -11,6 +11,7 @@ pub fn lockness_bags::SlotReceiver<T>::drop(&mut self)
 impl<T> core::marker::Freeze for lockness_bags::SlotReceiver<T>
 impl<T> !core::marker::Sync for lockness_bags::SlotReceiver<T>
 impl<T> core::marker::Unpin for lockness_bags::SlotReceiver<T>
+impl<T> core::marker::UnsafeUnpin for lockness_bags::SlotReceiver<T>
 impl<T> !core::panic::unwind_safe::RefUnwindSafe for lockness_bags::SlotReceiver<T>
 impl<T> !core::panic::unwind_safe::UnwindSafe for lockness_bags::SlotReceiver<T>
 impl<T, U> core::convert::Into<U> for lockness_bags::SlotReceiver<T> where U: core::convert::From<T>
@@ -46,6 +47,7 @@ impl<T> core::ops::drop::Drop for lockness_bags::SlotSender<T>
 pub fn lockness_bags::SlotSender<T>::drop(&mut self)
 impl<T> core::marker::Freeze for lockness_bags::SlotSender<T>
 impl<T> core::marker::Unpin for lockness_bags::SlotSender<T>
+impl<T> core::marker::UnsafeUnpin for lockness_bags::SlotSender<T>
 impl<T> !core::panic::unwind_safe::RefUnwindSafe for lockness_bags::SlotSender<T>
 impl<T> !core::panic::unwind_safe::UnwindSafe for lockness_bags::SlotSender<T>
 impl<T, U> core::convert::Into<U> for lockness_bags::SlotSender<T> where U: core::convert::From<T>

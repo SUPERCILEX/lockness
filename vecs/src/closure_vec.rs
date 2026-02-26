@@ -6,15 +6,13 @@ struct Metadata {
     task_fn: unsafe fn(NonNull<()>, bool),
 }
 
-pub struct ClosureVec<F: FnOnce()> {
+pub struct ClosureVec<F> {
     data: FreestandingVec<Metadata, F>,
 }
 
 // TODO should there be a 'static bound here?
 #[allow(clippy::non_send_fields_in_send_ty)]
-unsafe impl<T: FnOnce() + Send> Send for ClosureVec<T> {}
-
-unsafe impl<T: FnOnce() + Sync> Sync for ClosureVec<T> {}
+unsafe impl<T: Send> Send for ClosureVec<T> {}
 
 impl<F: FnOnce()> ClosureVec<F> {
     const INIT: Metadata = {
@@ -34,9 +32,14 @@ impl<F: FnOnce()> ClosureVec<F> {
             data: FreestandingVec::new(Self::INIT),
         }
     }
+    pub fn update_type(&mut self) {
+        self.data.init(Self::INIT);
+    }
+}
 
+impl<F> ClosureVec<F> {
     pub fn clear(&mut self) {
-        while !self._pop_and_run(true) {}
+        while !self.pop_and_run_(true) {}
     }
 
     #[must_use]
@@ -46,16 +49,12 @@ impl<F: FnOnce()> ClosureVec<F> {
         unsafe { data.read() }.into_raw().cast()
     }
 
-    pub const unsafe fn from_raw(ptr: *mut Self) -> Self {
+    pub const unsafe fn from_raw<U>(ptr: *mut ClosureVec<U>) -> Self {
         unsafe {
             Self {
-                data: FreestandingVec::from_raw(ptr.cast()),
+                data: FreestandingVec::from_raw::<U>(ptr.cast()),
             }
         }
-    }
-
-    pub fn update_type(&mut self) {
-        self.data.init(Self::INIT);
     }
 
     pub fn push(&mut self, value: F) {
@@ -64,13 +63,13 @@ impl<F: FnOnce()> ClosureVec<F> {
 
     /// Returns true if the vec is empty, false otherwise.
     pub fn pop_and_run(&mut self) -> bool {
-        self._pop_and_run(false)
+        self.pop_and_run_(false)
     }
 
-    fn _pop_and_run(&mut self, just_drop: bool) -> bool {
+    fn pop_and_run_(&mut self, just_drop: bool) -> bool {
         self.data
-            .pop(|&mut Metadata { task_fn }, captures| unsafe {
-                task_fn(captures.cast(), just_drop);
+            .pop(|&mut Metadata { task_fn }, closure| unsafe {
+                task_fn(closure.cast(), just_drop);
             })
             .is_none()
     }
@@ -87,7 +86,7 @@ impl<F: FnOnce()> Default for ClosureVec<F> {
     }
 }
 
-impl<F: FnOnce()> Drop for ClosureVec<F> {
+impl<F> Drop for ClosureVec<F> {
     fn drop(&mut self) {
         self.clear();
     }
@@ -137,6 +136,7 @@ mod tests {
     fn validate_do_nothing<F: FnOnce()>(mut f: impl FnMut(usize) -> F) {
         let mut tasks = ClosureVec::new();
         if false {
+            // Just make sure we compile
             tasks.push(f(42));
         }
     }
@@ -194,7 +194,7 @@ mod tests {
         let mut tasks = unsafe { ClosureVec::from_raw(tasks.into_raw()) };
         tasks.push(f(1234));
 
-        let mut tasks = unsafe { ClosureVec::<fn()>::from_raw(tasks.into_raw().cast()) };
+        let mut tasks = unsafe { ClosureVec::<fn()>::from_raw(tasks.into_raw()) };
         while !(tasks.pop_and_run()) {}
     }
 

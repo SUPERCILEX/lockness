@@ -1,22 +1,24 @@
 pub mod lockness_vecs
-pub struct lockness_vecs::ClosureVec<F: core::ops::function::FnOnce()>
+pub struct lockness_vecs::ClosureVec<F>
 impl<F: core::ops::function::FnOnce()> lockness_vecs::ClosureVec<F>
+pub fn lockness_vecs::ClosureVec<F>::new() -> Self
+pub fn lockness_vecs::ClosureVec<F>::update_type(&mut self)
+impl<F> lockness_vecs::ClosureVec<F>
 pub fn lockness_vecs::ClosureVec<F>::clear(&mut self)
-pub unsafe const fn lockness_vecs::ClosureVec<F>::from_raw(ptr: *mut Self) -> Self
+pub unsafe const fn lockness_vecs::ClosureVec<F>::from_raw<U>(ptr: *mut lockness_vecs::ClosureVec<U>) -> Self
 pub fn lockness_vecs::ClosureVec<F>::into_raw(self) -> *mut Self
 pub fn lockness_vecs::ClosureVec<F>::is_empty(&self) -> bool
-pub fn lockness_vecs::ClosureVec<F>::new() -> Self
 pub fn lockness_vecs::ClosureVec<F>::pop_and_run(&mut self) -> bool
 pub fn lockness_vecs::ClosureVec<F>::push(&mut self, value: F)
-pub fn lockness_vecs::ClosureVec<F>::update_type(&mut self)
 impl<F: core::ops::function::FnOnce()> core::default::Default for lockness_vecs::ClosureVec<F>
 pub fn lockness_vecs::ClosureVec<F>::default() -> Self
-impl<F: core::ops::function::FnOnce()> core::ops::drop::Drop for lockness_vecs::ClosureVec<F>
+impl<F> core::ops::drop::Drop for lockness_vecs::ClosureVec<F>
 pub fn lockness_vecs::ClosureVec<F>::drop(&mut self)
-impl<T: core::ops::function::FnOnce() + core::marker::Send> core::marker::Send for lockness_vecs::ClosureVec<T>
-impl<T: core::ops::function::FnOnce() + core::marker::Sync> core::marker::Sync for lockness_vecs::ClosureVec<T>
+impl<T: core::marker::Send> core::marker::Send for lockness_vecs::ClosureVec<T>
 impl<F> core::marker::Freeze for lockness_vecs::ClosureVec<F>
+impl<F> !core::marker::Sync for lockness_vecs::ClosureVec<F>
 impl<F> core::marker::Unpin for lockness_vecs::ClosureVec<F>
+impl<F> core::marker::UnsafeUnpin for lockness_vecs::ClosureVec<F>
 impl<F> core::panic::unwind_safe::RefUnwindSafe for lockness_vecs::ClosureVec<F> where F: core::panic::unwind_safe::RefUnwindSafe
 impl<F> core::panic::unwind_safe::UnwindSafe for lockness_vecs::ClosureVec<F> where F: core::panic::unwind_safe::RefUnwindSafe
 impl<T, U> core::convert::Into<U> for lockness_vecs::ClosureVec<F> where U: core::convert::From<T>
@@ -37,9 +39,9 @@ impl<T> core::convert::From<T> for lockness_vecs::ClosureVec<F>
 pub fn lockness_vecs::ClosureVec<F>::from(t: T) -> T
 pub struct lockness_vecs::FreestandingVec<M, T>
 impl<M, T> lockness_vecs::FreestandingVec<M, T>
-pub unsafe const fn lockness_vecs::FreestandingVec<M, T>::from_raw(ptr: *mut ()) -> Self
+pub unsafe const fn lockness_vecs::FreestandingVec<M, T>::from_raw<U>(ptr: *mut lockness_vecs::FreestandingVec<M, U>) -> Self
 pub fn lockness_vecs::FreestandingVec<M, T>::init(&mut self, metadata: M)
-pub fn lockness_vecs::FreestandingVec<M, T>::into_raw(self) -> *mut ()
+pub fn lockness_vecs::FreestandingVec<M, T>::into_raw(self) -> *mut Self
 pub fn lockness_vecs::FreestandingVec<M, T>::is_empty(&self) -> bool
 pub fn lockness_vecs::FreestandingVec<M, T>::new(metadata: M) -> Self
 pub fn lockness_vecs::FreestandingVec<M, T>::pop<O, F: core::ops::function::FnOnce(&mut M, core::ptr::non_null::NonNull<T>) -> O>(&mut self, f: F) -> core::option::Option<O>
@@ -47,9 +49,10 @@ pub fn lockness_vecs::FreestandingVec<M, T>::push(&mut self, value: T)
 impl<M, T> core::ops::drop::Drop for lockness_vecs::FreestandingVec<M, T>
 pub fn lockness_vecs::FreestandingVec<M, T>::drop(&mut self)
 impl<M: core::marker::Send, T: core::marker::Send> core::marker::Send for lockness_vecs::FreestandingVec<M, T>
-impl<M: core::marker::Sync, T: core::marker::Sync> core::marker::Sync for lockness_vecs::FreestandingVec<M, T>
 impl<M, T> core::marker::Freeze for lockness_vecs::FreestandingVec<M, T>
+impl<M, T> !core::marker::Sync for lockness_vecs::FreestandingVec<M, T>
 impl<M, T> core::marker::Unpin for lockness_vecs::FreestandingVec<M, T>
+impl<M, T> core::marker::UnsafeUnpin for lockness_vecs::FreestandingVec<M, T>
 impl<M, T> core::panic::unwind_safe::RefUnwindSafe for lockness_vecs::FreestandingVec<M, T> where T: core::panic::unwind_safe::RefUnwindSafe, M: core::panic::unwind_safe::RefUnwindSafe
 impl<M, T> core::panic::unwind_safe::UnwindSafe for lockness_vecs::FreestandingVec<M, T> where T: core::panic::unwind_safe::RefUnwindSafe, M: core::panic::unwind_safe::RefUnwindSafe
 impl<T, U> core::convert::Into<U> for lockness_vecs::FreestandingVec<M, T> where U: core::convert::From<T>

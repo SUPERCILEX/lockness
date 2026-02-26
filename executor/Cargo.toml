@@ -11,6 +11,7 @@ license.workspace = true
 
 [dependencies]
 bon = "3.9.0"
+lockness-vecs = { version = "0", path = "../vecs" }
 
 [dev-dependencies]
 criterion = "0.8.2"

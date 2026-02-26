@@ -850,6 +850,7 @@ dependencies = [
  "bon",
  "criterion",
  "flume",
+ "lockness-vecs",
  "rayon",
  "supercilex-tests",
  "tokio",

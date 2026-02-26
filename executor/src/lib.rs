@@ -1,11 +1,20 @@
+#![feature(mpmc_channel)]
 #![ doc = include_str!( "../README.md")]
 
 mod error;
 
-use std::{env, marker::PhantomData, num::NonZeroUsize, sync::OnceLock, thread};
+use std::{
+    env,
+    marker::PhantomData,
+    num::NonZeroUsize,
+    sync::{OnceLock, mpmc::Receiver},
+    thread,
+    time::Duration,
+};
 
 use bon::Builder;
 pub use error::{Error, JoinError};
+use lockness_vecs::ClosureVec;
 
 use crate::config::{Config, True};
 
@@ -55,6 +64,10 @@ fn default_max_threads() -> NonZeroUsize {
 struct DynamicParams {
     #[builder(default = default_max_threads())]
     max_threads: NonZeroUsize,
+
+    /// For how long should idle threads wait before killing themselves
+    #[builder(default = Duration::from_secs(10))]
+    keep_alive: Duration,
 }
 
 impl LocknessExecutorBuilder {
@@ -121,9 +134,9 @@ impl<C: Config> Spawner<C> {
 
     /// Tries to schedule submitted tasks on other threads.
     ///
-    /// WARNING: a [SpawnBuffer] must be dropped before a [Spawner] can schedule
-    /// its tasks, so calling flush without first dropping [SpawnBuffer]s does
-    /// nothing.
+    /// WARNING: a [`SpawnBuffer`] must be dropped before a [Spawner] can
+    /// schedule its tasks, so calling flush without first dropping
+    /// [`SpawnBuffer`]s does nothing.
     ///
     /// This will be called automatically on drop.
     pub fn flush(&self) {
@@ -137,10 +150,10 @@ impl<C: Config> Spawner<C> {
 /// threads until a call to `flush`. Additionally, unlike [Spawner], dropping
 /// this type does not trigger a scheduling action to allow for batched
 /// scheduling across task types.
-impl<'spawner, C, F> SpawnBuffer<'spawner, C, F> {
+impl<C, F> SpawnBuffer<'_, C, F> {
     /// Tries to schedule _this buffer's_ submitted tasks on other threads.
     ///
-    /// Use [Spawner::flush] after dropping this type if you would like to
+    /// Use [`Spawner::flush`] after dropping this type if you would like to
     /// schedule tasks across types.
     pub fn flush(&self) {
         todo!()
@@ -148,19 +161,17 @@ impl<'spawner, C, F> SpawnBuffer<'spawner, C, F> {
 }
 
 impl<
-    'a,
     C: Config + Clone + Send + 'static,
     F: FnOnce(&mut C::ThreadLocalState) -> Result<(), C::Error> + Send + 'static,
-> SpawnBuffer<'a, C, F>
+> SpawnBuffer<'_, C, F>
 {
     pub fn spawn(&self, f: F) {}
 }
 
 impl<
-    'a,
     C: Config<AllowTasksToSpawnMoreTasks = True> + Clone + Send + 'static,
     F: FnOnce(&Spawner<C>, &mut C::ThreadLocalState) -> Result<(), C::Error> + Send + 'static,
-> SpawnBuffer<'a, C, F>
+> SpawnBuffer<'_, C, F>
 {
     pub fn spawn_recursive(&self, f: F) {}
 }
@@ -172,6 +183,10 @@ impl<E> Iterator for Finisher<E> {
         todo!()
     }
 }
+
+struct TypeErasedTask;
+
+fn worker(tasks: Receiver<ClosureVec<TypeErasedTask>>) {}
 
 // impl Drop for LocknessExecutor {
 //     fn drop(&mut self) {
