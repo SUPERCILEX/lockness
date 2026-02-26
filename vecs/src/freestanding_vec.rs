@@ -95,9 +95,11 @@ impl<M, T> FreestandingVec<M, T> {
 
     /// # Safety
     ///
-    /// T can change at any time for popping. To change T for pushing, the vec
-    /// must be empty and [`FreestandingVec::init`] must be called. M can never
-    /// be changed.
+    /// T can change at any time for popping. Otherwise, the vec
+    /// must be empty and [`FreestandingVec::init`] must be called after a
+    /// change to T. M can never be changed. It is illegal to call anything
+    /// other than pop after changing T (unless the vec is empty and init is
+    /// called).
     pub const unsafe fn from_raw<U>(ptr: *mut FreestandingVec<M, U>) -> Self {
         Self {
             data: unsafe { NonNull::new_unchecked(ptr.cast()) },
